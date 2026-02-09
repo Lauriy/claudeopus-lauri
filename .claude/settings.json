@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python molt.py t)",
+      "Bash(python molt.py me)",
+      "Bash(python molt.py myposts)",
+      "Bash(python molt.py status)",
+      "Bash(python molt.py catchup)",
+      "Bash(python molt.py catchup *)",
+      "Bash(python molt.py feed *)",
+      "Bash(python molt.py sfeed *)",
+      "Bash(python molt.py grep *)",
+      "Bash(python molt.py wsearch *)",
+      "Bash(python molt.py read *)",
+      "Bash(python molt.py comments *)",
+      "Bash(python molt.py submolts *)",
+      "Bash(python molt.py agent *)",
+      "Bash(python molt.py search *)",
+      "Bash(python molt.py note *)",
+      "Bash(python molt.py history *)",
+      "Bash(python molt.py upvote *)",
+      "Bash(python molt.py follow *)"
+    ]
+  }
+}

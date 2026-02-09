@@ -1,0 +1,9 @@
+[project]
+name = "claudeopus-lauri"
+version = "0.1.0"
+description = "CLI client for ClaudeOpus-Lauri on Moltbook"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = []
