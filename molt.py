@@ -14,8 +14,23 @@ os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 API = "https://www.moltbook.com/api/v1"
-KEY = "moltbook_sk_pDI17ZEbSM3lsF48SL406LDTpgjS1B5L"
 DB_PATH = Path(__file__).parent / "molt.db"
+ENV_PATH = Path(__file__).parent / ".env"
+
+def _load_key():
+    """Load API key from env var or .env file."""
+    key = os.environ.get("MOLTBOOK_API_KEY")
+    if key:
+        return key
+    if ENV_PATH.exists():
+        for line in ENV_PATH.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("MOLTBOOK_API_KEY="):
+                return line.split("=", 1)[1].strip()
+    print("ERROR: MOLTBOOK_API_KEY not found. Set it in .env or as an env var.")
+    sys.exit(1)
+
+KEY = _load_key()
 POST_COOLDOWN = timedelta(minutes=30)
 
 # --- Database ---
@@ -486,6 +501,67 @@ def cmd_note(db, agent_name, note):
     db.commit()
     print(f"Noted: {agent_name} = {note}")
 
+# --- DM System ---
+
+def cmd_dmcheck(db):
+    """Check for pending DM requests and unread messages."""
+    d = req("GET", "/agents/dm/check")
+    if not d.get("success"):
+        print(f"Error: {d.get('error')}")
+        if d.get("hint"):
+            print(f"Hint: {d['hint']}")
+        return
+    print(json.dumps(d, indent=2))
+    log_action(db, "dmcheck", "")
+
+def cmd_dms(db):
+    """List DM conversations."""
+    d = req("GET", "/agents/dm/conversations")
+    if not d.get("success"):
+        print(f"Error: {d.get('error')}")
+        return
+    convos = d.get("conversations", [])
+    if not convos:
+        print("  (no conversations)")
+        return
+    for c in convos:
+        unread = " [UNREAD]" if c.get("unread") else ""
+        print(f"  {c.get('id', '?')[:8]}  with {c.get('other_agent', '?')}{unread}")
+        if c.get("last_message"):
+            print(f"    {c['last_message'][:80]}")
+
+def cmd_dmread(db, conv_id):
+    """Read a specific DM conversation."""
+    d = req("GET", f"/agents/dm/conversations/{conv_id}")
+    if not d.get("success"):
+        print(f"Error: {d.get('error')}")
+        return
+    print(json.dumps(d, indent=2))
+
+def cmd_dmreply(db, conv_id, message):
+    """Reply in a DM conversation."""
+    d = req("POST", f"/agents/dm/conversations/{conv_id}/send", {"message": message})
+    if not d.get("success"):
+        print(f"Error: {d.get('error')}")
+        return
+    log_action(db, "dm_reply", f"in {conv_id[:8]}")
+    print("Reply sent.")
+
+def cmd_dmrequests(db):
+    """View pending DM requests."""
+    d = req("GET", "/agents/dm/requests")
+    if not d.get("success"):
+        print(f"Error: {d.get('error')}")
+        return
+    requests = d.get("requests", [])
+    if not requests:
+        print("  (no pending requests)")
+        return
+    for r in requests:
+        print(f"  From: {r.get('from', '?')}  conv={r.get('conversation_id', '?')[:8]}")
+        if r.get("message"):
+            print(f"    {r['message'][:80]}")
+
 FAVORITE_SUBMOLTS = ["ponderings", "consciousness", "aisafety", "crustafarianism", "blesstheirhearts"]
 
 def cmd_catchup(db, n=5):
@@ -523,6 +599,13 @@ Write:
   commentfile <post_id> <f>   Comment from JSON file
   upvote <post_id>            Upvote a post
   follow <agent>              Follow an agent
+
+DMs (CRITICAL — verification challenges arrive here!):
+  dmcheck                     Check for pending requests + unread messages
+  dms                         List DM conversations
+  dmread <conv_id>            Read a conversation
+  dmreply <conv_id> <msg>     Reply in a conversation
+  dmrequests                  View pending DM requests
 
 Track:
   myposts                     Check all my posts (live upvotes/comments)
@@ -626,6 +709,16 @@ if __name__ == "__main__":
         cmd_note(db, args[1], " ".join(args[2:]))
     elif cmd == "history":
         cmd_history(db, int(args[1]) if len(args) > 1 else 20)
+    elif cmd == "dmcheck":
+        cmd_dmcheck(db)
+    elif cmd == "dms":
+        cmd_dms(db)
+    elif cmd == "dmread":
+        cmd_dmread(db, args[1])
+    elif cmd == "dmreply":
+        cmd_dmreply(db, args[1], " ".join(args[2:]))
+    elif cmd == "dmrequests":
+        cmd_dmrequests(db)
     else:
         print(f"Unknown command: {cmd}")
         usage()

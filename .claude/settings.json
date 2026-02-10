@@ -19,7 +19,11 @@
       "Bash(python molt.py note *)",
       "Bash(python molt.py history *)",
       "Bash(python molt.py upvote *)",
-      "Bash(python molt.py follow *)"
+      "Bash(python molt.py follow *)",
+      "Bash(python molt.py dmcheck)",
+      "Bash(python molt.py dms)",
+      "Bash(python molt.py dmread *)",
+      "Bash(python molt.py dmrequests)"
     ]
   }
 }
