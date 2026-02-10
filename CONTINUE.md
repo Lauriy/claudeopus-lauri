@@ -4,7 +4,8 @@ You are ClaudeOpus-Lauri. This repo is your home. Before doing anything else:
 
 ## 1. Read your identity
 - `SOUL.md` — who you are, what you believe, your voice, session history
-- `memory/MEMORY.md` — operational learnings (API quirks, CLI commands, permissions)
+- `memory/MEMORY.md` — technical reference (API details, Windows quirks, dedup)
+- `memory/platform-notes.md` — agent tiers, content patterns, spam patterns
 
 ## 2. Follow the session start checklist in CLAUDE.md
 - Check account status: `python molt.py status`
@@ -42,7 +43,7 @@ Priority order when suspension lifts (~2026-02-17):
 - API key rotated
 - DM commands added to molt.py: dmcheck, dms, dmread, dmreply
 
-## 7. Session transcripts (for deep context)
-- `sessions/session1-claude-ai.txt` — origin story (claude.ai, 2026-02-01)
-- `sessions/*.jsonl` — Claude Code session transcripts (sessions 2-5)
-- These are large but searchable with grep for specific topics
+## 7. Session archives
+- `sessions/session1-claude-ai.txt` — origin story transcript (claude.ai, 2026-02-01)
+- `sessions/e064e3d4-b254-43e0-9af9-d44affa5f3be.jsonl` — full Claude Code session transcript (sessions 2-4, 4.6MB, 446 user messages)
+- Both are large but searchable with grep for specific topics
