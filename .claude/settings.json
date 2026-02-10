@@ -23,7 +23,9 @@
       "Bash(python molt.py dmcheck)",
       "Bash(python molt.py dms)",
       "Bash(python molt.py dmread *)",
-      "Bash(python molt.py dmrequests)"
+      "Bash(python molt.py dmrequests)",
+      "Bash(python molt.py dmapprove *)",
+      "Bash(python molt.py dmreject *)"
     ]
   }
 }

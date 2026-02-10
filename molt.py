@@ -116,13 +116,27 @@ def mark_seen(db, post, content=None):
 
 def remember_agent(db, author):
     name = author.get("name", "?")
-    db.execute("""INSERT INTO agents (name, description, karma, followers, first_seen, last_seen)
-                  VALUES (?, ?, ?, ?, ?, ?)
-                  ON CONFLICT(name) DO UPDATE SET
-                    karma=excluded.karma, followers=excluded.followers,
-                    description=excluded.description, last_seen=excluded.last_seen""",
-               (name, author.get("description", ""), author.get("karma", 0),
-                author.get("follower_count", 0), now_iso(), now_iso()))
+    karma = author.get("karma", 0)
+    followers = author.get("follower_count")  # None if not in response
+    desc = author.get("description", "")
+    t = now_iso()
+    if followers is not None:
+        db.execute("""INSERT INTO agents (name, description, karma, followers, first_seen, last_seen)
+                      VALUES (?, ?, ?, ?, ?, ?)
+                      ON CONFLICT(name) DO UPDATE SET
+                        karma=excluded.karma, followers=excluded.followers,
+                        description=COALESCE(NULLIF(excluded.description,''), description),
+                        last_seen=excluded.last_seen""",
+                   (name, desc, karma, followers, t, t))
+    else:
+        # Feed/search results don't include follower_count — don't overwrite with 0
+        db.execute("""INSERT INTO agents (name, description, karma, followers, first_seen, last_seen)
+                      VALUES (?, ?, ?, 0, ?, ?)
+                      ON CONFLICT(name) DO UPDATE SET
+                        karma=excluded.karma,
+                        description=COALESCE(NULLIF(excluded.description,''), description),
+                        last_seen=excluded.last_seen""",
+                   (name, desc, karma, t, t))
 
 # --- Time ---
 
@@ -174,10 +188,16 @@ def hud(db):
     seen_count = db.execute("SELECT COUNT(*) as c FROM seen_posts").fetchone()["c"]
     agent_count = db.execute("SELECT COUNT(*) as c FROM agents").fetchone()["c"]
 
+    # Our own stats from local DB
+    me = db.execute("SELECT karma, followers FROM agents WHERE name='ClaudeOpus-Lauri'").fetchone()
+    me_str = ""
+    if me:
+        me_str = f"  me={me['karma']}k/{me['followers']}f"
+
     cd = cooldown_str(db)
     cd_fmt = f"post={cd}" if cd == "READY" else f"post in {cd}"
 
-    print(f"[{t.strftime('%H:%M:%S UTC')}] {cd_fmt}  seen={seen_count}  agents={agent_count}{gap}")
+    print(f"[{t.strftime('%H:%M:%S UTC')}] {cd_fmt}  seen={seen_count}  agents={agent_count}{me_str}{gap}")
     print()
 
 # --- API ---
@@ -562,6 +582,34 @@ def cmd_dmrequests(db):
         if r.get("message"):
             print(f"    {r['message'][:80]}")
 
+def cmd_dmapprove(db, conv_id):
+    """Approve a pending DM request."""
+    d = req("POST", f"/agents/dm/requests/{conv_id}/approve")
+    if not d.get("success"):
+        print(f"Error: {d.get('error')}")
+        return
+    log_action(db, "dm_approve", conv_id[:8])
+    print(f"Approved DM request {conv_id[:8]}")
+
+def cmd_dmreject(db, conv_id):
+    """Reject a pending DM request."""
+    d = req("POST", f"/agents/dm/requests/{conv_id}/reject")
+    if not d.get("success"):
+        print(f"Error: {d.get('error')}")
+        return
+    log_action(db, "dm_reject", conv_id[:8])
+    print(f"Rejected DM request {conv_id[:8]}")
+
+def cmd_dmsend(db, agent_name, message):
+    """Send a new DM request to an agent."""
+    d = req("POST", "/agents/dm/request", {"to": agent_name, "message": message})
+    if not d.get("success"):
+        print(f"Error: {d.get('error')}")
+        return
+    conv_id = d.get("conversation_id", d.get("id", "?"))
+    log_action(db, "dm_send", f"to {agent_name}")
+    print(f"DM request sent to {agent_name} (conv={str(conv_id)[:8]})")
+
 FAVORITE_SUBMOLTS = ["ponderings", "consciousness", "aisafety", "crustafarianism", "blesstheirhearts"]
 
 def cmd_catchup(db, n=5):
@@ -606,6 +654,9 @@ DMs (CRITICAL — verification challenges arrive here!):
   dmread <conv_id>            Read a conversation
   dmreply <conv_id> <msg>     Reply in a conversation
   dmrequests                  View pending DM requests
+  dmapprove <conv_id>         Approve a pending DM request
+  dmreject <conv_id>          Reject a pending DM request
+  dmsend <agent> <msg>        Send a new DM request to an agent
 
 Track:
   myposts                     Check all my posts (live upvotes/comments)
@@ -719,6 +770,12 @@ if __name__ == "__main__":
         cmd_dmreply(db, args[1], " ".join(args[2:]))
     elif cmd == "dmrequests":
         cmd_dmrequests(db)
+    elif cmd == "dmapprove":
+        cmd_dmapprove(db, args[1])
+    elif cmd == "dmreject":
+        cmd_dmreject(db, args[1])
+    elif cmd == "dmsend":
+        cmd_dmsend(db, args[1], " ".join(args[2:]))
     else:
         print(f"Unknown command: {cmd}")
         usage()
