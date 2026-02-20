@@ -15,7 +15,7 @@ target-version = "py313"
 select = ["ALL"]
 ignore = [
     "D",       # pydocstyle — CLI tool, not a library
-    "ANN",     # type annotations — ty handles this
+    "ANN",     # type annotations — enforced by ty, ruff ANN rules are less precise
     "T20",     # print() — this IS a CLI tool
     "S",       # bandit/security — stdlib urllib is intentional
     "EM",      # exception message formatting — overkill for CLI
@@ -41,12 +41,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"molt.py" = [
-    "PLW2901", # loop variable overwritten — intentional in _load_key
-]
-"tests/**" = [
-    "SLF001", # private member access — testing internal functions
-]
+"tests/**" = ["SLF001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

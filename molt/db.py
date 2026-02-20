@@ -3,12 +3,13 @@
 import json
 import sqlite3
 from datetime import datetime
+from typing import Any
 
 from molt import DB_PATH, ROOT
 from molt.timing import POST_COOLDOWN, now, now_iso
 
 
-def get_db():
+def get_db() -> sqlite3.Connection:
     db = sqlite3.connect(str(DB_PATH))
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode=WAL")
@@ -51,12 +52,8 @@ def get_db():
             action TEXT,
             detail TEXT
         );
-        CREATE TABLE IF NOT EXISTS kv (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        );
+        CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
     """)
-    # migrate: add content column if missing
     try:
         db.execute("SELECT content FROM seen_posts LIMIT 1")
     except sqlite3.OperationalError:
@@ -64,17 +61,17 @@ def get_db():
     return db
 
 
-def kv_get(db, key, default=None):
+def kv_get(db: sqlite3.Connection, key: str, default: str | None = None) -> str | None:
     row = db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
     return row["value"] if row else default
 
 
-def kv_set(db, key, value):
+def kv_set(db: sqlite3.Connection, key: str, value: str) -> None:
     db.execute("REPLACE INTO kv (key, value) VALUES (?, ?)", (key, str(value)))
     db.commit()
 
 
-def log_action(db, action, detail=""):
+def log_action(db: sqlite3.Connection, action: str, detail: str = "") -> None:
     db.execute(
         "INSERT INTO actions (at, action, detail) VALUES (?, ?, ?)",
         (now_iso(), action, detail),
@@ -82,7 +79,9 @@ def log_action(db, action, detail=""):
     db.commit()
 
 
-def mark_seen(db, post, content=None):
+def mark_seen(
+    db: sqlite3.Connection, post: dict[str, Any], content: str | None = None,
+) -> None:
     db.execute(
         """INSERT INTO seen_posts (id, author, title, submolt, upvotes, comment_count, content, seen_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -102,10 +101,10 @@ def mark_seen(db, post, content=None):
     )
 
 
-def remember_agent(db, author):
+def remember_agent(db: sqlite3.Connection, author: dict[str, Any]) -> None:
     name = author.get("name", "?")
     karma = author.get("karma", 0)
-    followers = author.get("follower_count")  # None if not in response
+    followers = author.get("follower_count")
     desc = author.get("description", "")
     t = now_iso()
     if followers is not None:
@@ -119,7 +118,6 @@ def remember_agent(db, author):
             (name, desc, karma, followers, t, t),
         )
     else:
-        # Feed/search results don't include follower_count — don't overwrite with 0
         db.execute(
             """INSERT INTO agents (name, description, karma, followers, first_seen, last_seen)
                       VALUES (?, ?, ?, 0, ?, ?)
@@ -131,23 +129,22 @@ def remember_agent(db, author):
         )
 
 
-def cooldown_str(db):
+def cooldown_str(db: sqlite3.Connection) -> str:
     last = kv_get(db, "last_post_at")
     if not last:
         return "READY"
-    elapsed = now() - datetime.fromisoformat(last)
-    remaining = POST_COOLDOWN - elapsed
+    remaining = POST_COOLDOWN - (now() - datetime.fromisoformat(last))
     if remaining.total_seconds() <= 0:
         return "READY"
     m, s = divmod(int(remaining.total_seconds()), 60)
     return f"{m}m {s}s"
 
 
-def can_post(db):
+def can_post(db: sqlite3.Connection) -> bool:
     return cooldown_str(db) == "READY"
 
 
-def migrate_from_json(db):
+def migrate_from_json(db: sqlite3.Connection) -> None:
     old = ROOT / "molt_state.json"
     if not old.exists():
         return

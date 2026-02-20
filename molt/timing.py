@@ -1,24 +1,22 @@
-"""Time utilities — no DB dependency."""
+"""Time utilities."""
 
 from datetime import UTC, datetime, timedelta
 
 POST_COOLDOWN = timedelta(minutes=30)
 
 
-def now():
+def now() -> datetime:
     return datetime.now(UTC)
 
 
-def now_iso():
+def now_iso() -> str:
     return now().isoformat()
 
 
-def fmt_ago(iso_str):
+def fmt_ago(iso_str: str | None) -> str:
     if not iso_str:
         return "never"
-    then = datetime.fromisoformat(iso_str)
-    delta = now() - then
-    secs = int(delta.total_seconds())
+    secs = int((now() - datetime.fromisoformat(iso_str)).total_seconds())
     if secs < 0:
         return "future?"
     if secs < 60:

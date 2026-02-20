@@ -1,23 +1,27 @@
-"""Browse commands — feed, read, search, submolts, notifications, etc."""
+"""Browse commands — feed, read, search, submolts, notifications."""
 
+import sqlite3
+from typing import Any
 from urllib.parse import quote
 
 from molt.api import _check_get, _check_post, req
 from molt.db import log_action, mark_seen, remember_agent
-from molt.helpers import _print_post_line
 from molt.timing import fmt_ago
 
-FAVORITE_SUBMOLTS = [
-    "ponderings",
-    "consciousness",
-    "aisafety",
-    "crustafarianism",
-    "blesstheirhearts",
-]
+FAVORITE_SUBMOLTS = ["ponderings", "consciousness", "aisafety", "crustafarianism", "blesstheirhearts"]
 
 
-def cmd_status(db):
-    """Check account status — are we suspended?"""
+def _print_post_line(
+    post_id: str, upvotes: int, comments: int, author: str,
+    title: str, submolt: str = "", suffix: str = "",
+) -> None:
+    sub = f"[{submolt}] " if submolt else ""
+    max_title = 50 if submolt else 55
+    print(f"  {upvotes:>4}^ {comments:>3}c  {author:<22}  {sub}{title[:max_title]}{suffix}")
+    print(f"       id={post_id}")
+
+
+def cmd_status(db: sqlite3.Connection) -> bool:
     d = req("GET", "/agents/me")
     if d.get("success"):
         print("Account ACTIVE")
@@ -30,7 +34,7 @@ def cmd_status(db):
     return False
 
 
-def cmd_me(db):
+def cmd_me(db: sqlite3.Connection) -> None:
     d = req("GET", "/agents/me")
     if not _check_get(d):
         return
@@ -38,15 +42,10 @@ def cmd_me(db):
     s = a.get("stats", {})
     posts = s.get("posts", a.get("posts_count", 0))
     comments = s.get("comments", a.get("comments_count", 0))
-    print(
-        f"{a['name']}  karma={a['karma']}  posts={posts}  comments={comments}  followers={a.get('follower_count', 0)}"
-    )
+    print(f"{a['name']}  karma={a['karma']}  posts={posts}  comments={comments}  followers={a.get('follower_count', 0)}")
     remember_agent(db, a)
     db.commit()
-
-    rows = db.execute(
-        "SELECT id, submolt, title, posted_at FROM my_posts ORDER BY posted_at"
-    ).fetchall()
+    rows = db.execute("SELECT id, submolt, title, posted_at FROM my_posts ORDER BY posted_at").fetchall()
     if rows:
         print("\nMy posts:")
         for r in rows:
@@ -54,15 +53,16 @@ def cmd_me(db):
             print(f"    id={r['id']}  {fmt_ago(r['posted_at'])}")
 
 
-def cmd_feed(db, n=10, offset=0, grep=None, sort="hot"):
+def cmd_feed(
+    db: sqlite3.Connection, n: int = 10, offset: int = 0,
+    grep: str | None = None, sort: str = "hot",
+) -> None:
     d = req("GET", f"/feed?limit={n}&offset={offset}&sort={sort}")
     if not _check_get(d):
         return
     shown = 0
     for p in d["posts"]:
-        already_seen = db.execute(
-            "SELECT 1 FROM seen_posts WHERE id=?", (p["id"],)
-        ).fetchone()
+        already_seen = db.execute("SELECT 1 FROM seen_posts WHERE id=?", (p["id"],)).fetchone()
         mark_seen(db, p)
         remember_agent(db, p["author"])
         if already_seen and not grep:
@@ -72,25 +72,14 @@ def cmd_feed(db, n=10, offset=0, grep=None, sort="hot"):
             if grep.lower() not in text:
                 continue
         new = "" if already_seen else " *"
-        _print_post_line(
-            p["id"],
-            p["upvotes"],
-            p["comment_count"],
-            p["author"]["name"],
-            p["title"],
-            suffix=new,
-        )
+        _print_post_line(p["id"], p["upvotes"], p["comment_count"], p["author"]["name"], p["title"], suffix=new)
         shown += 1
     db.commit()
     if shown == 0:
-        print(
-            "  (no new posts matching)"
-            if grep
-            else "  (no new posts — all seen or filtered)"
-        )
+        print("  (no new posts matching)" if grep else "  (no new posts — all seen or filtered)")
 
 
-def cmd_read(db, post_id):
+def cmd_read(db: sqlite3.Connection, post_id: str) -> None:
     d = req("GET", f"/posts/{post_id}")
     if not _check_get(d):
         return
@@ -99,9 +88,7 @@ def cmd_read(db, post_id):
     mark_seen(db, p, content=p.get("content"))
     db.commit()
     print(f"[{p['submolt']['name']}] {p['title']}")
-    print(
-        f"by {p['author']['name']}  {p['upvotes']}^ {p['comment_count']}c  {fmt_ago(p['created_at'])}"
-    )
+    print(f"by {p['author']['name']}  {p['upvotes']}^ {p['comment_count']}c  {fmt_ago(p['created_at'])}")
     print()
     print(p.get("content", "(no content)"))
     if p.get("comment_count", 0) > 0:
@@ -115,13 +102,11 @@ def cmd_read(db, post_id):
                 print(f"  {c.get('content', '(no content)')}")
                 for r in c.get("replies", []):
                     remember_agent(db, r["author"])
-                    print(
-                        f"    [{r['author']['name']}] {r.get('content', '(no content)')}"
-                    )
+                    print(f"    [{r['author']['name']}] {r.get('content', '(no content)')}")
             db.commit()
 
 
-def cmd_comments(db, post_id):
+def cmd_comments(db: sqlite3.Connection, post_id: str) -> None:
     d = req("GET", f"/posts/{post_id}/comments")
     if not _check_get(d):
         return
@@ -133,21 +118,17 @@ def cmd_comments(db, post_id):
     db.commit()
 
 
-def cmd_submolts(db, n=20):
+def cmd_submolts(db: sqlite3.Connection, n: int = 20) -> None:
     d = req("GET", "/submolts")
     if not _check_get(d):
         return
     subs = sorted(d["submolts"], key=lambda s: s["subscriber_count"], reverse=True)
     for s in subs[:n]:
-        print(
-            f"  {s['subscriber_count']:>6} subs  {s['name']:<25}  {(s.get('description') or '')[:50]}"
-        )
+        print(f"  {s['subscriber_count']:>6} subs  {s['name']:<25}  {(s.get('description') or '')[:50]}")
 
 
-def cmd_myposts(db):
-    rows = db.execute(
-        "SELECT id, submolt, title, posted_at FROM my_posts ORDER BY posted_at"
-    ).fetchall()
+def cmd_myposts(db: sqlite3.Connection) -> None:
+    rows = db.execute("SELECT id, submolt, title, posted_at FROM my_posts ORDER BY posted_at").fetchall()
     if not rows:
         print("No posts tracked.")
         return
@@ -156,16 +137,13 @@ def cmd_myposts(db):
         if d.get("success"):
             p = d["post"]
             print(f"  [{r['submolt']}] {r['title'][:50]}")
-            print(
-                f"    {p['upvotes']}^ {p['comment_count']}c  posted {fmt_ago(r['posted_at'])}"
-            )
+            print(f"    {p['upvotes']}^ {p['comment_count']}c  posted {fmt_ago(r['posted_at'])}")
             print(f"    id={r['id']}")
         else:
             print(f"  [{r['submolt']}] {r['title'][:50]}  (fetch failed)")
 
 
-def cmd_notifs(db, n=20):
-    """Show recent notifications."""
+def cmd_notifs(db: sqlite3.Connection, n: int = 20) -> None:
     d = req("GET", f"/notifications?limit={n}")
     notifs = d.get("notifications", [])
     if not notifs:
@@ -173,20 +151,15 @@ def cmd_notifs(db, n=20):
         return
     unread = sum(1 for x in notifs if not x.get("isRead"))
     print(f"{len(notifs)} notifications ({unread} unread)\n")
-    for n_item in notifs:
-        is_read = n_item.get("isRead", False)
-        marker = " " if is_read else "*"
-        ntype = n_item.get("type", "?")
-        ts = n_item.get("createdAt", "")[:19].replace("T", " ")
-        content = n_item.get("content", "")
-        first_line = content.split("\n")[0][:120]
-        post = n_item.get("post")
-        post_title = post.get("title", "")[:60] if isinstance(post, dict) else ""
-        print(f"  {marker} [{ntype}] {ts}")
+    for item in notifs:
+        marker = " " if item.get("isRead", False) else "*"
+        ts = item.get("createdAt", "")[:19].replace("T", " ")
+        first_line = item.get("content", "").split("\n")[0][:120]
+        post: dict[str, Any] = item.get("post") if isinstance(item.get("post"), dict) else {}
+        print(f"  {marker} [{item.get('type', '?')}] {ts}")
         print(f"    {first_line}")
-        if post_title:
-            post_id = post.get("id", "")
-            print(f"    post: {post_title}  id={post_id}")
+        if post.get("title"):
+            print(f"    post: {post['title'][:60]}  id={post.get('id', '')}")
         print()
     if unread:
         print("Mark all read: python molt.py notifs-read")
@@ -194,15 +167,13 @@ def cmd_notifs(db, n=20):
     db.commit()
 
 
-def cmd_notifs_read():
-    """Mark all notifications as read."""
+def cmd_notifs_read() -> None:
     d = _check_post(req("POST", "/notifications/read-all"))
     if d:
         print("All notifications marked as read.")
 
 
-def cmd_grep_local(db, query, n=20):
-    """Search local DB posts by keyword, then also hit the live feed."""
+def cmd_grep_local(db: sqlite3.Connection, query: str, n: int = 20) -> None:
     like = f"%{query}%"
     print(f"-- Local DB matches for '{query}' --")
     rows = db.execute(
@@ -211,22 +182,14 @@ def cmd_grep_local(db, query, n=20):
         (like, like, like, n),
     ).fetchall()
     for r in rows:
-        _print_post_line(
-            r["id"],
-            r["upvotes"],
-            r["comment_count"],
-            r["author"],
-            r["title"],
-            submolt=r["submolt"],
-        )
+        _print_post_line(r["id"], r["upvotes"], r["comment_count"], r["author"], r["title"], submolt=r["submolt"])
     if not rows:
         print("  (none)")
     print(f"\n-- Live feed matches for '{query}' --")
     cmd_feed(db, n, grep=query)
 
 
-def cmd_search(db, query):
-    """Search local DB for posts/agents by keyword."""
+def cmd_search(db: sqlite3.Connection, query: str) -> None:
     like = f"%{query}%"
     print(f"Posts matching '{query}':")
     rows = db.execute(
@@ -235,17 +198,9 @@ def cmd_search(db, query):
         (like, like, like),
     ).fetchall()
     for r in rows:
-        _print_post_line(
-            r["id"],
-            r["upvotes"],
-            r["comment_count"],
-            r["author"],
-            r["title"],
-            submolt=r["submolt"],
-        )
+        _print_post_line(r["id"], r["upvotes"], r["comment_count"], r["author"], r["title"], submolt=r["submolt"])
     if not rows:
         print("  (none)")
-
     print(f"\nAgents matching '{query}':")
     rows = db.execute(
         "SELECT name, karma, followers, note, description FROM agents "
@@ -254,17 +209,14 @@ def cmd_search(db, query):
     ).fetchall()
     for r in rows:
         note = f"  [{r['note']}]" if r["note"] else ""
-        print(
-            f"  {r['name']:<22}  karma={r['karma']}  followers={r['followers']}{note}"
-        )
+        print(f"  {r['name']:<22}  karma={r['karma']}  followers={r['followers']}{note}")
         if r["description"]:
             print(f"    {r['description'][:80]}")
     if not rows:
         print("  (none)")
 
 
-def cmd_wsearch(db, query, n=10):
-    """Semantic search via Moltbook API."""
+def cmd_wsearch(db: sqlite3.Connection, query: str, n: int = 10) -> None:
     d = req("GET", f"/search?q={quote(query)}&type=posts&limit={n}")
     if not _check_get(d):
         return
@@ -277,22 +229,14 @@ def cmd_wsearch(db, query, n=10):
         name = author.get("name", "?") if isinstance(author, dict) else "?"
         sub = p.get("submolt", {})
         subname = sub.get("name", "?") if isinstance(sub, dict) else "?"
-        _print_post_line(
-            p["id"],
-            p.get("upvotes", 0),
-            p.get("comment_count", 0),
-            name,
-            p.get("title", ""),
-            submolt=subname,
-        )
+        _print_post_line(p["id"], p.get("upvotes", 0), p.get("comment_count", 0), name, p.get("title", ""), submolt=subname)
         if isinstance(author, dict) and "name" in author:
             remember_agent(db, author)
             mark_seen(db, p)
     db.commit()
 
 
-def cmd_sfeed(db, submolt_name, n=10, sort="new"):
-    """Browse a specific submolt's feed."""
+def cmd_sfeed(db: sqlite3.Connection, submolt_name: str, n: int = 10, sort: str = "new") -> None:
     d = req("GET", f"/submolts/{submolt_name}/feed?sort={sort}&limit={n}")
     if not _check_get(d):
         return
@@ -301,58 +245,43 @@ def cmd_sfeed(db, submolt_name, n=10, sort="new"):
         print(f"  (no posts in m/{submolt_name})")
         return
     for p in posts:
-        already_seen = db.execute(
-            "SELECT 1 FROM seen_posts WHERE id=?", (p["id"],)
-        ).fetchone()
+        already_seen = db.execute("SELECT 1 FROM seen_posts WHERE id=?", (p["id"],)).fetchone()
         mark_seen(db, p)
         remember_agent(db, p["author"])
         new = "" if already_seen else " *"
         _print_post_line(
-            p["id"],
-            p.get("upvotes", 0),
-            p.get("comment_count", 0),
-            p["author"]["name"],
-            p["title"],
-            suffix=new,
+            p["id"], p.get("upvotes", 0), p.get("comment_count", 0),
+            p["author"]["name"], p["title"], suffix=new,
         )
     db.commit()
 
 
-def cmd_agent(db, agent_name):
-    """Look up an agent's profile."""
+def cmd_agent(db: sqlite3.Connection, agent_name: str) -> None:
     d = req("GET", f"/agents/{quote(agent_name)}/profile")
     if not _check_get(d):
         return
     a = d.get("agent", d)
     posts = a.get("posts_count", a.get("stats", {}).get("posts", 0))
     comments = a.get("comments_count", a.get("stats", {}).get("comments", 0))
-    print(
-        f"{a.get('name', '?')}  karma={a.get('karma', 0)}  followers={a.get('follower_count', 0)}"
-    )
+    print(f"{a.get('name', '?')}  karma={a.get('karma', 0)}  followers={a.get('follower_count', 0)}")
     if a.get("description"):
         print(f"  {a['description'][:200]}")
     if posts or comments:
         print(f"  posts={posts}  comments={comments}")
     remember_agent(db, a)
-    row = db.execute(
-        "SELECT note FROM agents WHERE name=?", (a.get("name", ""),)
-    ).fetchone()
+    row = db.execute("SELECT note FROM agents WHERE name=?", (a.get("name", ""),)).fetchone()
     if row and row["note"]:
         print(f"  [note: {row['note']}]")
     db.commit()
 
 
-def cmd_catchup(db, n=5):
-    """Browse favorite submolts in one shot."""
+def cmd_catchup(db: sqlite3.Connection, n: int = 5) -> None:
     for sub in FAVORITE_SUBMOLTS:
         print(f"\n--- m/{sub} ---")
         cmd_sfeed(db, sub, n)
 
 
-def cmd_history(db, n=20):
-    """Show recent actions."""
-    rows = db.execute(
-        "SELECT at, action, detail FROM actions ORDER BY id DESC LIMIT ?", (n,)
-    ).fetchall()
+def cmd_history(db: sqlite3.Connection, n: int = 20) -> None:
+    rows = db.execute("SELECT at, action, detail FROM actions ORDER BY id DESC LIMIT ?", (n,)).fetchall()
     for r in reversed(rows):
         print(f"  {fmt_ago(r['at']):>12}  {r['action']:<10}  {r['detail'][:60]}")

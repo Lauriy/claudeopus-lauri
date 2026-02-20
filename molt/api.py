@@ -5,6 +5,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from typing import Any
 
 from molt import API_LOG, ENV_PATH, ROOT
 from molt.solver import decode_obfuscated, solve_challenge
@@ -13,8 +14,7 @@ from molt.timing import now_iso
 API = "https://www.moltbook.com/api/v1"
 
 
-def _load_key():
-    """Load API key from env var or .env file."""
+def _load_key() -> str:
     key = os.environ.get("MOLTBOOK_API_KEY")
     if key:
         return key
@@ -27,28 +27,21 @@ def _load_key():
     sys.exit(1)
 
 
-KEY = _load_key()
+KEY: str = _load_key()
 
 
-def _log_api(method, path, status, body_json):
-    """Append full API response to log file for POST requests."""
+def _log_api(method: str, path: str, status: int, body_json: dict[str, Any]) -> None:
     if method != "POST":
         return
     try:
-        entry = {
-            "ts": now_iso(),
-            "method": method,
-            "path": path,
-            "status": status,
-            "response": body_json,
-        }
+        entry = {"ts": now_iso(), "method": method, "path": path, "status": status, "response": body_json}
         with open(API_LOG, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
     except Exception:
-        pass  # never let logging break the request
+        pass
 
 
-def req(method, path, body=None, timeout=30):
+def req(method: str, path: str, body: dict[str, Any] | None = None, timeout: int = 30) -> dict[str, Any]:
     url = f"{API}{path}"
     data = json.dumps(body).encode() if body else None
     r = urllib.request.Request(url, data=data, method=method)
@@ -74,8 +67,8 @@ def req(method, path, body=None, timeout=30):
         return {"success": False, "error": str(e)}
 
 
-def _find_verification(d):
-    """Search response dict for a verification challenge in all known locations."""
+def _find_verification(d: dict[str, Any]) -> dict[str, Any] | None:
+    """Search response for a verification challenge in all known locations."""
     if d.get("verification_required"):
         return d.get("verification", {})
     for key in ("comment", "post"):
@@ -87,8 +80,7 @@ def _find_verification(d):
     return None
 
 
-def handle_verification(response_data):
-    """Check if API response contains a verification challenge and solve it."""
+def handle_verification(response_data: dict[str, Any]) -> dict[str, Any]:
     v = _find_verification(response_data)
     if not v:
         return response_data
@@ -105,17 +97,15 @@ def handle_verification(response_data):
     challenge_file.write_text(json.dumps(v, indent=2))
     print(f"  Saved to: {challenge_file}")
 
-    # Propose answer but DO NOT auto-submit — too many wrong answers burn challenges
+    # DO NOT auto-submit — wrong answers burn the challenge permanently
     answer = solve_challenge(challenge, instructions)
     if answer is not None:
-        answer_str = f"{answer:.2f}"
-        print(f"\n  >>> PROPOSED answer: {answer_str}")
+        print(f"\n  >>> PROPOSED answer: {answer:.2f}")
     print(f"  >>> Submit: python molt.py verify {code} <ANSWER>")
     return response_data
 
 
-def _check_get(d):
-    """Check GET response for errors. Returns True if OK, prints error otherwise."""
+def _check_get(d: dict[str, Any]) -> bool:
     if d.get("statusCode"):
         print(f"Error: {d.get('error', d.get('message', '?'))}")
         return False
@@ -127,7 +117,7 @@ def _check_get(d):
     return True
 
 
-def _check_post(d):
+def _check_post(d: dict[str, Any]) -> dict[str, Any] | None:
     """Handle verification challenge + success check for POST responses."""
     if _find_verification(d):
         d = handle_verification(d)

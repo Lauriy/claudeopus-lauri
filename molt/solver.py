@@ -1,57 +1,37 @@
-"""Verification challenge solver — pure computation, no API dependency."""
+"""Verification challenge solver."""
 
 import re
 
-WORD_TO_NUM = {
-    "zero": 0,
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "seven": 7,
-    "eight": 8,
-    "nine": 9,
-    "ten": 10,
-    "eleven": 11,
-    "twelve": 12,
-    "thirteen": 13,
-    "fourteen": 14,
-    "fifteen": 15,
-    "sixteen": 16,
-    "seventeen": 17,
-    "eighteen": 18,
-    "nineteen": 19,
-    "twenty": 20,
-    "thirty": 30,
-    "forty": 40,
-    "fifty": 50,
-    "sixty": 60,
-    "seventy": 70,
-    "eighty": 80,
-    "ninety": 90,
-    "hundred": 100,
-    "thousand": 1000,
+WORD_TO_NUM: dict[str, int] = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+    "hundred": 100, "thousand": 1000,
 }
 
+# Words that fuzzy-match number words but aren't numbers.
+_NOT_NUMBERS: frozenset[str] = frozenset({
+    "for", "the", "our", "ore", "one", "her", "his", "its",
+    "ten", "then", "they", "them", "this", "that", "than",
+})
 
-def decode_obfuscated(text):
-    """Decode obfuscated challenge text: strip special chars, collapse doubled letters.
-    Uses greedy pair matching: if current and next char are same letter (ignoring case),
-    collapse to one and skip the next. This correctly handles 'EeEe' -> 'ee' (sixteen)."""
-    words = text.split()
-    decoded = []
-    for word in words:
+
+def decode_obfuscated(text: str) -> str:
+    """Strip special chars and collapse doubled letters (Xx -> x)."""
+    decoded: list[str] = []
+    for word in text.split():
         clean = "".join(c for c in word if c.isalpha())
         if not clean:
             continue
-        result = []
+        result: list[str] = []
         i = 0
         while i < len(clean):
             if i + 1 < len(clean) and clean[i].lower() == clean[i + 1].lower():
                 result.append(clean[i].lower())
-                i += 2  # skip the duplicate
+                i += 2
             else:
                 result.append(clean[i].lower())
                 i += 1
@@ -59,43 +39,29 @@ def decode_obfuscated(text):
     return " ".join(decoded)
 
 
-_NOT_NUMBERS = frozenset({
-    "for", "the", "our", "ore", "one", "her", "his", "its",
-    "ten", "then", "they", "them", "this", "that", "than",
-})
-"""Common English words that fuzzy-match to number words but aren't numbers.
-'for' → 'four', 'ore' → 'one', etc. Blocklist prevents false positives."""
-
-
-def _fuzzy_num(token):
-    """Try to match a potentially truncated number word. Returns value or None.
-    Handles decoder artifacts: dropped letters ('fourten' -> 'fourteen'),
-    truncated suffixes ('thre' -> 'three')."""
+def _fuzzy_num(token: str) -> int | None:
+    """Match potentially corrupted number words (dropped/extra letters, truncation)."""
     if token in WORD_TO_NUM:
         return WORD_TO_NUM[token]
     if len(token) < 3 or token in _NOT_NUMBERS:
         return None
-    # Strategy 1: try inserting one letter at each position (handles decoder dropping a letter)
     for i in range(len(token) + 1):
-        for c in "aeeioou":  # only vowels + common doubles
+        for c in "aeeioou":
             candidate = token[:i] + c + token[i:]
             if candidate in WORD_TO_NUM:
                 return WORD_TO_NUM[candidate]
-    # Strategy 2: try deleting one letter at each position (extra char from decoder)
-    # Catches 'thiirty' → 'thirty', 'ttwelve' → 'twelve'
     for i in range(len(token)):
-        candidate = token[:i] + token[i + 1 :]
+        candidate = token[:i] + token[i + 1:]
         if candidate in WORD_TO_NUM:
             return WORD_TO_NUM[candidate]
-    # Strategy 3: suffix truncation (decoder lost trailing chars)
     for word, val in WORD_TO_NUM.items():
         if word.startswith(token) and len(token) >= len(word) - 2:
             return val
     return None
 
 
-def words_to_number(words):
-    """Convert a sequence of number words to a single number. E.g. ['thirty','two'] -> 32."""
+def words_to_number(words: list[str]) -> int:
+    """['thirty', 'two'] -> 32."""
     total = 0
     current = 0
     for w in words:
@@ -108,78 +74,70 @@ def words_to_number(words):
             current = (current or 1) * 100
         else:
             current += val
-    total += current
-    return total
+    return total + current
 
 
-def _join_split_tokens(tokens):
-    """Join adjacent tokens that together form a number word.
-    Handles decoder splitting words at special chars: 't welve' → 'twelve'."""
-    result = []
+def _join_split_tokens(tokens: list[str]) -> list[str]:
+    """Join adjacent tokens that form a number word: ['t', 'welve'] -> ['twelve']."""
+    result: list[str] = []
     i = 0
     while i < len(tokens):
-        if i + 1 < len(tokens):
-            joined = tokens[i] + tokens[i + 1]
-            if _fuzzy_num(joined) is not None:
-                result.append(joined)
-                i += 2
-                continue
-        result.append(tokens[i])
-        i += 1
+        if i + 1 < len(tokens) and _fuzzy_num(tokens[i] + tokens[i + 1]) is not None:
+            result.append(tokens[i] + tokens[i + 1])
+            i += 2
+        else:
+            result.append(tokens[i])
+            i += 1
     return result
 
 
-def extract_numbers(text):
-    """Extract number groups from decoded text, return list of ints."""
+def extract_numbers(text: str) -> list[int | float]:
+    """Extract number groups from decoded text."""
     tokens = _join_split_tokens(text.lower().split())
-    numbers = []
-    buf = []
+    numbers: list[int | float] = []
+    buf: list[str] = []
     for t in tokens:
-        val = _fuzzy_num(t)
-        if val is not None:
+        if _fuzzy_num(t) is not None:
             buf.append(t)
         elif buf:
             numbers.append(words_to_number(buf))
             buf = []
     if buf:
         numbers.append(words_to_number(buf))
-    # Also extract bare digits
     numbers.extend(float(m.group()) for m in re.finditer(r"\b\d+\.?\d*\b", text))
     return numbers
 
 
-def solve_challenge(challenge_text, instructions=""):
-    """Decode obfuscated challenge text, extract numbers, compute answer."""
+def solve_challenge(challenge_text: str, instructions: str = "") -> float | None:
+    """Decode obfuscated text, extract numbers, compute answer."""
     decoded = decode_obfuscated(challenge_text)
     print(f"  Challenge decoded: {decoded}")
     nums = extract_numbers(decoded)
     print(f"  Numbers found: {nums}")
     if not nums:
-        # Fallback: try extracting numbers from raw text too
         nums = extract_numbers(challenge_text.lower())
         print(f"  Fallback numbers from raw: {nums}")
     if not nums:
         return None
-    # Check instructions for operation hints
-    inst_lower = (instructions + " " + decoded).lower()
 
-    def _has_stem(text, stems):
-        return any(s in text for s in stems)
+    combined = (instructions + " " + decoded).lower()
 
-    if _has_stem(inst_lower, ("multipl", "product", "times")):
-        result = 1
+    def _has(stems: tuple[str, ...]) -> bool:
+        return any(s in combined for s in stems)
+
+    if _has(("multipl", "product", "times")):
+        result = 1.0
         for n in nums:
             result *= n
-    elif _has_stem(inst_lower, ("subtract", "minus", "differ", "lose", "lost", "decreas", "less", "reduc", "slow")):
+    elif _has(("subtract", "minus", "differ", "lose", "lost", "decreas", "less", "reduc", "slow")):
         result = nums[0]
         for n in nums[1:]:
             result -= n
-    elif _has_stem(inst_lower, ("divid", "ratio", "split")):
+    elif _has(("divid", "ratio", "split")):
         result = nums[0]
         for n in nums[1:]:
             if n != 0:
                 result /= n
     else:
-        # Default: sum
         result = sum(nums)
-    return result
+    return float(result)

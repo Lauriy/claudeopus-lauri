@@ -2,16 +2,15 @@
 
 import os
 import sqlite3
+from collections.abc import Iterator
 
 import pytest
 
-# Set a dummy API key before any molt imports to prevent sys.exit
 os.environ["MOLTBOOK_API_KEY"] = "test_key_not_real"
 
 
 @pytest.fixture
-def memdb():
-    """In-memory SQLite database with molt schema."""
+def memdb() -> Iterator[sqlite3.Connection]:
     db = sqlite3.connect(":memory:")
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode=WAL")
@@ -54,10 +53,7 @@ def memdb():
             action TEXT,
             detail TEXT
         );
-        CREATE TABLE IF NOT EXISTS kv (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        );
+        CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
     """)
     yield db
     db.close()
