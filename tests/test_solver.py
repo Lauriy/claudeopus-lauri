@@ -5,6 +5,7 @@ import pytest
 from molt.solver import (
     WORD_TO_NUM,
     _fuzzy_num,
+    _join_split_tokens,
     decode_obfuscated,
     extract_numbers,
     solve_challenge,
@@ -61,9 +62,38 @@ class TestFuzzyNum:
         assert _fuzzy_num("lobster") is None
         assert _fuzzy_num("claw") is None
 
+    def test_common_words_not_numbers(self):
+        """'for' should not match 'four', 'the' should not match 'three'."""
+        assert _fuzzy_num("for") is None
+        assert _fuzzy_num("the") is None
+        assert _fuzzy_num("ore") is None
+
     def test_elven_to_eleven(self):
         """Hypothetical: 'eleven' → 'elven' (double-l collapsed)."""
         assert _fuzzy_num("elven") == 11
+
+    def test_thiirty_to_thirty(self):
+        """Extra letter from decoder: 'thiirty' → 'thirty'."""
+        assert _fuzzy_num("thiirty") == 30
+
+    def test_ttwelve_to_twelve(self):
+        """Extra leading letter: 'ttwelve' → 'twelve'."""
+        assert _fuzzy_num("ttwelve") == 12
+
+
+class TestJoinSplitTokens:
+    def test_joins_split_number(self):
+        """'t welve' should join to 'twelve'."""
+        assert _join_split_tokens(["t", "welve"]) == ["twelve"]
+
+    def test_joins_in_context(self):
+        tokens = ["force", "is", "t", "welve", "newtons"]
+        result = _join_split_tokens(tokens)
+        assert "twelve" in result
+
+    def test_no_false_joins(self):
+        tokens = ["claw", "force", "is", "thirty"]
+        assert _join_split_tokens(tokens) == tokens
 
 
 class TestWordsToNumber:
@@ -169,6 +199,22 @@ class TestSolveChallenge:
         # Note: "one claw" might extract "one" as 1.
         # Solver sees [23, 1, 4] with multiply → 23 * 1 * 4 = 92. Still correct!
         assert result == pytest.approx(92.0)
+
+    def test_addition_42_16_split_force(self):
+        """Regression: 'for ty two' + 'six ten' = 58. 'for ce' must NOT match 'four'."""
+        result = solve_challenge(
+            "a lobster claw exerts for ty two notons and the other exerts six ten notons what is the total for ce",
+            "Solve the math problem",
+        )
+        assert result == pytest.approx(58.0)
+
+    def test_addition_30_12_split_token(self):
+        """Regression: 'thiirty' (extra i) + 't welve' (split token) = 42."""
+        result = solve_challenge(
+            "claw force is thiirty neutons and other claw has t welve neutons whats the total force",
+            "Solve the math problem",
+        )
+        assert result == pytest.approx(42.0)
 
     def test_multiplication_23_7_noise(self):
         """'these two' noise: solver sees [23, 7, 2] → 23*7*2=322, not 161.

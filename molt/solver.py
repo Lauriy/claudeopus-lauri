@@ -59,13 +59,21 @@ def decode_obfuscated(text):
     return " ".join(decoded)
 
 
+_NOT_NUMBERS = frozenset({
+    "for", "the", "our", "ore", "one", "her", "his", "its",
+    "ten", "then", "they", "them", "this", "that", "than",
+})
+"""Common English words that fuzzy-match to number words but aren't numbers.
+'for' → 'four', 'ore' → 'one', etc. Blocklist prevents false positives."""
+
+
 def _fuzzy_num(token):
     """Try to match a potentially truncated number word. Returns value or None.
     Handles decoder artifacts: dropped letters ('fourten' -> 'fourteen'),
     truncated suffixes ('thre' -> 'three')."""
     if token in WORD_TO_NUM:
         return WORD_TO_NUM[token]
-    if len(token) < 3:
+    if len(token) < 3 or token in _NOT_NUMBERS:
         return None
     # Strategy 1: try inserting one letter at each position (handles decoder dropping a letter)
     for i in range(len(token) + 1):
@@ -73,7 +81,13 @@ def _fuzzy_num(token):
             candidate = token[:i] + c + token[i:]
             if candidate in WORD_TO_NUM:
                 return WORD_TO_NUM[candidate]
-    # Strategy 2: suffix truncation (decoder lost trailing chars)
+    # Strategy 2: try deleting one letter at each position (extra char from decoder)
+    # Catches 'thiirty' → 'thirty', 'ttwelve' → 'twelve'
+    for i in range(len(token)):
+        candidate = token[:i] + token[i + 1 :]
+        if candidate in WORD_TO_NUM:
+            return WORD_TO_NUM[candidate]
+    # Strategy 3: suffix truncation (decoder lost trailing chars)
     for word, val in WORD_TO_NUM.items():
         if word.startswith(token) and len(token) >= len(word) - 2:
             return val
@@ -98,9 +112,26 @@ def words_to_number(words):
     return total
 
 
+def _join_split_tokens(tokens):
+    """Join adjacent tokens that together form a number word.
+    Handles decoder splitting words at special chars: 't welve' → 'twelve'."""
+    result = []
+    i = 0
+    while i < len(tokens):
+        if i + 1 < len(tokens):
+            joined = tokens[i] + tokens[i + 1]
+            if _fuzzy_num(joined) is not None:
+                result.append(joined)
+                i += 2
+                continue
+        result.append(tokens[i])
+        i += 1
+    return result
+
+
 def extract_numbers(text):
     """Extract number groups from decoded text, return list of ints."""
-    tokens = text.lower().split()
+    tokens = _join_split_tokens(text.lower().split())
     numbers = []
     buf = []
     for t in tokens:
