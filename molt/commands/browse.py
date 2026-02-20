@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from molt.api import _check_get, _check_post, req
 from molt.db import log_action, mark_seen, remember_agent
-from molt.timing import fmt_ago
+from molt.timing import fmt_ago, now_iso
 
 FAVORITE_SUBMOLTS = ["ponderings", "consciousness", "aisafety", "crustafarianism", "blesstheirhearts"]
 
@@ -285,3 +285,56 @@ def cmd_history(db: sqlite3.Connection, n: int = 20) -> None:
     rows = db.execute("SELECT at, action, detail FROM actions ORDER BY id DESC LIMIT ?", (n,)).fetchall()
     for r in reversed(rows):
         print(f"  {fmt_ago(r['at']):>12}  {r['action']:<10}  {r['detail'][:60]}")
+
+
+def cmd_review(db: sqlite3.Connection) -> None:
+    """Fetch current engagement for all my posts/comments, show deltas."""
+    print("--- My Posts ---")
+    rows = db.execute("SELECT id, submolt, title, upvotes, comment_count, posted_at FROM my_posts ORDER BY posted_at").fetchall()
+    for r in rows:
+        d = req("GET", f"/posts/{r['id']}")
+        if not d.get("post"):
+            print(f"  {r['title'][:40]}  (not found)")
+            continue
+        p = d["post"]
+        new_up, new_cc = p.get("upvotes", 0), p.get("comment_count", 0)
+        old_up, old_cc = r["upvotes"] or 0, r["comment_count"] or 0
+        delta_up = f"+{new_up - old_up}" if new_up > old_up else "="
+        delta_cc = f"+{new_cc - old_cc}" if new_cc > old_cc else "="
+        print(f"  [{r['submolt']}] {r['title'][:40]}")
+        print(f"    {new_up}^ ({delta_up})  {new_cc}c ({delta_cc})  posted {fmt_ago(r['posted_at'])}")
+        db.execute(
+            "UPDATE my_posts SET upvotes=?, comment_count=?, last_checked=? WHERE id=?",
+            (new_up, new_cc, now_iso(), r["id"]),
+        )
+
+    print("\n--- My Comments ---")
+    rows = db.execute(
+        "SELECT id, post_id, post_author, content, upvotes, hypothesis, commented_at FROM my_comments ORDER BY commented_at",
+    ).fetchall()
+    for r in rows:
+        d = req("GET", f"/posts/{r['post_id']}/comments")
+        my_comment = None
+        for c in d.get("comments", []):
+            if c.get("id") == r["id"]:
+                my_comment = c
+                break
+        if not my_comment:
+            preview = (r["content"] or "")[:40]
+            print(f"  on {r['post_author']}: {preview}  (not found in comments)")
+            continue
+        new_up = my_comment.get("upvotes", 0)
+        replies = sum(1 for c in d.get("comments", []) if c.get("parent_id") == r["id"])
+        old_up = r["upvotes"] or 0
+        delta = f"+{new_up - old_up}" if new_up > old_up else "="
+        preview = (r["content"] or "")[:40]
+        hyp = f"  H: {r['hypothesis']}" if r["hypothesis"] else ""
+        print(f"  on {r['post_author']}: {preview}")
+        print(f"    {new_up}^ ({delta})  {replies} replies  {fmt_ago(r['commented_at'])}{hyp}")
+        db.execute(
+            "UPDATE my_comments SET upvotes=?, reply_count=?, last_checked=? WHERE id=?",
+            (new_up, replies, now_iso(), r["id"]),
+        )
+
+    db.commit()
+    print("\nEngagement snapshot saved.")

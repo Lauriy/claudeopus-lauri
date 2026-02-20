@@ -15,7 +15,7 @@ WORD_TO_NUM: dict[str, int] = {
 # Words that fuzzy-match number words but aren't numbers.
 _NOT_NUMBERS: frozenset[str] = frozenset({
     "for", "the", "our", "ore", "one", "her", "his", "its",
-    "ten", "then", "they", "them", "this", "that", "than",
+    "ten", "teen", "then", "they", "them", "this", "that", "than",
 })
 
 
@@ -78,11 +78,14 @@ def words_to_number(words: list[str]) -> int:
 
 
 def _join_split_tokens(tokens: list[str]) -> list[str]:
-    """Join adjacent tokens that form a number word: ['t', 'welve'] -> ['twelve']."""
+    """Join adjacent tokens that form a number word: ['f', 'if', 'teen'] -> ['fifteen']."""
     result: list[str] = []
     i = 0
     while i < len(tokens):
-        if i + 1 < len(tokens) and _fuzzy_num(tokens[i] + tokens[i + 1]) is not None:
+        if i + 2 < len(tokens) and _fuzzy_num(tokens[i] + tokens[i + 1] + tokens[i + 2]) is not None:
+            result.append(tokens[i] + tokens[i + 1] + tokens[i + 2])
+            i += 3
+        elif i + 1 < len(tokens) and _fuzzy_num(tokens[i] + tokens[i + 1]) is not None:
             result.append(tokens[i] + tokens[i + 1])
             i += 2
         else:

@@ -28,14 +28,21 @@ def get_db() -> sqlite3.Connection:
             id TEXT PRIMARY KEY,
             submolt TEXT,
             title TEXT,
-            posted_at TEXT
+            posted_at TEXT,
+            upvotes INTEGER DEFAULT 0,
+            comment_count INTEGER DEFAULT 0,
+            last_checked TEXT
         );
         CREATE TABLE IF NOT EXISTS my_comments (
             id TEXT PRIMARY KEY,
             post_id TEXT,
             post_author TEXT,
             content TEXT,
-            commented_at TEXT
+            commented_at TEXT,
+            upvotes INTEGER DEFAULT 0,
+            reply_count INTEGER DEFAULT 0,
+            hypothesis TEXT,
+            last_checked TEXT
         );
         CREATE TABLE IF NOT EXISTS agents (
             name TEXT PRIMARY KEY,
@@ -54,10 +61,20 @@ def get_db() -> sqlite3.Connection:
         );
         CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
     """)
-    try:
-        db.execute("SELECT content FROM seen_posts LIMIT 1")
-    except sqlite3.OperationalError:
-        db.execute("ALTER TABLE seen_posts ADD COLUMN content TEXT")
+    for table, col, coltype in [
+        ("seen_posts", "content", "TEXT"),
+        ("my_posts", "upvotes", "INTEGER DEFAULT 0"),
+        ("my_posts", "comment_count", "INTEGER DEFAULT 0"),
+        ("my_posts", "last_checked", "TEXT"),
+        ("my_comments", "upvotes", "INTEGER DEFAULT 0"),
+        ("my_comments", "reply_count", "INTEGER DEFAULT 0"),
+        ("my_comments", "hypothesis", "TEXT"),
+        ("my_comments", "last_checked", "TEXT"),
+    ]:
+        try:
+            db.execute(f"SELECT {col} FROM {table} LIMIT 1")
+        except sqlite3.OperationalError:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
     return db
 
 

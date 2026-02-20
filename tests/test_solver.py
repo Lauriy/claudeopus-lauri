@@ -83,6 +83,13 @@ class TestJoinSplitTokens:
         tokens = ["claw", "force", "is", "thirty"]
         assert _join_split_tokens(tokens) == tokens
 
+    def test_three_way_join(self) -> None:
+        assert _join_split_tokens(["f", "if", "teen"]) == ["fifteen"]
+
+    def test_three_way_in_context(self) -> None:
+        result = _join_split_tokens(["exerts", "f", "if", "teen", "newtons"])
+        assert "fifteen" in result
+
 
 class TestWordsToNumber:
     def test_simple(self) -> None:
@@ -191,3 +198,10 @@ class TestSolveChallenge:
             "swims at twenty three centimeters per second and claw force is seven newtons, multiply these two",
             "calculate the result",
         ) == pytest.approx(322.0)
+
+    def test_add_32_15_three_way_split(self) -> None:
+        """'F iF tEeN' decodes to 'f if teen' — needs 3-way token join."""
+        assert solve_challenge(
+            "a lobster claw exert sthirty two newtons and other claw exerts f if teen total force",
+            "Solve the math problem",
+        ) == pytest.approx(47.0)

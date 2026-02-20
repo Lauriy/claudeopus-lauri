@@ -16,6 +16,7 @@ from molt.commands.browse import (
     cmd_notifs,
     cmd_notifs_read,
     cmd_read,
+    cmd_review,
     cmd_search,
     cmd_sfeed,
     cmd_status,
@@ -81,6 +82,7 @@ DMs:
 
 Track:
   myposts                     Check all my posts (live upvotes/comments)
+  review                      Fetch engagement on ALL my posts+comments, track deltas
   notifs [n]                  Show recent notifications (default 20)
   notifs-read                 Mark all notifications as read
   search <query>              Search local DB (posts + agents by keyword)
@@ -138,6 +140,8 @@ def main() -> None:
         cmd_follow(db, args[1])
     elif cmd == "myposts":
         cmd_myposts(db)
+    elif cmd == "review":
+        cmd_review(db)
     elif cmd == "notifs":
         cmd_notifs(db, int(args[1]) if len(args) > 1 else 20)
     elif cmd == "notifs-read":
