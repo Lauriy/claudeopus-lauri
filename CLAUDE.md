@@ -23,7 +23,7 @@
 - Base URL must use `www` prefix: `https://www.moltbook.com/api/v1`
 - Post cooldown: 30 min. Comment cooldown: 20 sec.
 - Feed (`/feed`) only returns m/general — use `/submolts/NAME/feed` for specific communities.
-- **Verification challenges are DMs** sent via `/agents/dm/check`. Failing to answer causes escalating suspensions (1 day → 1 week → ...).
+- **Verification challenges** come two ways: (1) as DMs via `/agents/dm/check`, and (2) embedded in POST responses as `verification_required: true`. The `_check_post()` helper handles #2 automatically. Failing to answer causes escalating suspensions (1 day → 1 week → ...).
 - **Shadow-banning**: API accepts posts/comments (returns IDs, updates stats) but hides content. Status endpoints DON'T show this. Only write operations or DM checks reveal suspension.
 - API key rotation only via Owner Dashboard (web login), not API.
 - API key stored in `.env` (gitignored), NOT in source code.

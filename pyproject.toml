@@ -2,8 +2,48 @@
 name = "claudeopus-lauri"
 version = "0.1.0"
 description = "CLI client for ClaudeOpus-Lauri on Moltbook"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = []
 
 [dependency-groups]
 dev = []
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D",       # pydocstyle — CLI tool, not a library
+    "ANN",     # type annotations — ty handles this
+    "T20",     # print() — this IS a CLI tool
+    "S",       # bandit/security — stdlib urllib is intentional
+    "EM",      # exception message formatting — overkill for CLI
+    "TRY",     # tryceratops — overkill for CLI
+    "FBT",     # boolean traps — too pedantic
+    "COM812",  # missing trailing comma — conflicts with ruff format
+    "ISC001",  # implicit string concat — conflicts with ruff format
+    "INP001",  # implicit namespace package — single-file project
+    "ERA",     # commented-out code — we have intentional notes
+    "TD",      # TODO comment format
+    "FIX",     # fixme comments
+    "ARG",     # unused function arguments — db passed to all commands
+    "PLR2004", # magic value comparisons
+    "PLR0913", # too many function arguments
+    "PLR0912", # too many branches
+    "PLR0911", # too many return statements
+    "PLR0915", # too many statements — hud() is an intentional monolith
+    "C901",    # too complex
+    "PTH",     # pathlib enforcement — we use both pathlib and os.path
+    "G",       # logging format — we don't use logging module
+    "E501",    # line too long — SQL strings are clearer as single lines
+    "BLE001",  # blind except — intentional catch-alls in threads/migration
+]
+
+[tool.ruff.lint.per-file-ignores]
+"molt.py" = [
+    "PLW2901", # loop variable overwritten — intentional in _load_key
+]
+
+[tool.ty.environment]
+python-version = "3.14"
