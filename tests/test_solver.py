@@ -205,3 +205,17 @@ class TestSolveChallenge:
             "a lobster claw exert sthirty two newtons and other claw exerts f if teen total force",
             "Solve the math problem",
         ) == pytest.approx(47.0)
+
+    def test_sub_23_7_split_operation(self) -> None:
+        """'slo ws' splits the 'slow' stem — operation detection must handle split tokens."""
+        assert solve_challenge(
+            "a lobster swims in the velawcite of twen ty thre meters per second um and slo ws by seven how much new veloocity",
+            "Solve the math problem",
+        ) == pytest.approx(16.0)
+
+    def test_sub_32_12_doubled_operation(self) -> None:
+        """'diifference' has doubled chars from decoder — stem 'differ' must still match."""
+        assert solve_challenge(
+            "a lobster exerts thirty two neewtons cllaw foorce resists twelve neewtons what is the diifference",
+            "Solve the math problem",
+        ) == pytest.approx(20.0)

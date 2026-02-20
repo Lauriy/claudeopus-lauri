@@ -111,6 +111,17 @@ def extract_numbers(text: str) -> list[int | float]:
     return numbers
 
 
+def _collapse_doubles(text: str) -> str:
+    """Collapse consecutive duplicate characters: 'diifference' -> 'diference'."""
+    if not text:
+        return text
+    result = [text[0]]
+    for c in text[1:]:
+        if c != result[-1]:
+            result.append(c)
+    return "".join(result)
+
+
 def solve_challenge(challenge_text: str, instructions: str = "") -> float | None:
     """Decode obfuscated text, extract numbers, compute answer."""
     decoded = decode_obfuscated(challenge_text)
@@ -124,9 +135,14 @@ def solve_challenge(challenge_text: str, instructions: str = "") -> float | None
         return None
 
     combined = (instructions + " " + decoded).lower()
+    combined_nospace = combined.replace(" ", "")
+    combined_dedup = _collapse_doubles(combined)
 
     def _has(stems: tuple[str, ...]) -> bool:
-        return any(s in combined for s in stems)
+        return any(
+            s in combined or s in combined_nospace or _collapse_doubles(s) in combined_dedup
+            for s in stems
+        )
 
     if _has(("multipl", "product", "times")):
         result = 1.0
