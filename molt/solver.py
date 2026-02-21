@@ -78,11 +78,20 @@ def words_to_number(words: list[str]) -> int:
 
 
 def _join_split_tokens(tokens: list[str]) -> list[str]:
-    """Join adjacent tokens that form a number word: ['f', 'if', 'teen'] -> ['fifteen']."""
+    """Join adjacent tokens that form a number word: ['f', 'if', 'teen'] -> ['fifteen'].
+
+    Prefers exact 2-way joins over fuzzy 3-way joins to avoid greedily consuming
+    the first letter of the next number (e.g. 't'+'wenty'+'f' eating the 'f' from 'five').
+    """
     result: list[str] = []
     i = 0
     while i < len(tokens):
-        if i + 2 < len(tokens) and _fuzzy_num(tokens[i] + tokens[i + 1] + tokens[i + 2]) is not None:
+        exact_2 = i + 1 < len(tokens) and (tokens[i] + tokens[i + 1]) in WORD_TO_NUM
+        if (
+            not exact_2
+            and i + 2 < len(tokens)
+            and _fuzzy_num(tokens[i] + tokens[i + 1] + tokens[i + 2]) is not None
+        ):
             result.append(tokens[i] + tokens[i + 1] + tokens[i + 2])
             i += 3
         elif i + 1 < len(tokens) and _fuzzy_num(tokens[i] + tokens[i + 1]) is not None:
@@ -122,6 +131,18 @@ def _collapse_doubles(text: str) -> str:
     return "".join(result)
 
 
+def _extract_raw_operators(text: str) -> set[str]:
+    """Find literal math operators (*, /, +, -) in raw challenge text between word boundaries."""
+    ops: set[str] = set()
+    # Look for standalone * / + - surrounded by spaces or punctuation
+    for m in re.finditer(r"(?<=[}\]~)\s])\s*([*/+\-])\s*(?=\s*[A-Za-z{(\[])", text):
+        ops.add(m.group(1))
+    # Also check for * appearing with spaces around it (/ excluded — too many false positives from obfuscation noise)
+    if re.search(r"\s\*\s", text):
+        ops.add("*")
+    return ops
+
+
 def solve_challenge(challenge_text: str, instructions: str = "") -> float | None:
     """Decode obfuscated text, extract numbers, compute answer."""
     decoded = decode_obfuscated(challenge_text)
@@ -134,6 +155,7 @@ def solve_challenge(challenge_text: str, instructions: str = "") -> float | None
     if not nums:
         return None
 
+    raw_ops = _extract_raw_operators(challenge_text)
     combined = (instructions + " " + decoded).lower()
     combined_nospace = combined.replace(" ", "")
     combined_dedup = _collapse_doubles(combined)
@@ -144,7 +166,7 @@ def solve_challenge(challenge_text: str, instructions: str = "") -> float | None
             for s in stems
         )
 
-    if _has(("multipl", "product", "times")):
+    if "*" in raw_ops or _has(("multipl", "product", "times")):
         result = 1.0
         for n in nums:
             result *= n
@@ -152,7 +174,9 @@ def solve_challenge(challenge_text: str, instructions: str = "") -> float | None
         result = nums[0]
         for n in nums[1:]:
             result -= n
-    elif _has(("divid", "ratio", "split")):
+    elif _has(("add", "plus", "sum", "combin", "gain", "increas", "total")):
+        result = sum(nums)
+    elif "/" in raw_ops or _has(("divid", "ratio", "split")):
         result = nums[0]
         for n in nums[1:]:
             if n != 0:

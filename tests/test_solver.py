@@ -219,3 +219,37 @@ class TestSolveChallenge:
             "a lobster exerts thirty two neewtons cllaw foorce resists twelve neewtons what is the diifference",
             "Solve the math problem",
         ) == pytest.approx(20.0)
+
+    def test_mul_33_7_raw_asterisk(self) -> None:
+        """Literal '*' in raw challenge text means multiplication — decoder strips it."""
+        assert solve_challenge(
+            "LoO.oBbSsTt-Err] ClLaAaWw^ FoOrRcEe] Is/ ThIrRtTyY ThHrReEe] NeEwWoOtToOnNs~ * SeEvVeEn, WhHaAt] Is/ ToOtTaAlLl^ FoOrRcEe?",
+            "Solve the math problem",
+        ) == pytest.approx(231.0)
+
+    def test_mul_25_3_compound_before_split(self) -> None:
+        """'t wenty f ive' must join as 'twenty'+'five'=25, NOT eat 'f' into 3-way 'twentyf'→20."""
+        assert solve_challenge(
+            "A] LoB- StEr S^hArE d ClAw FoRcE Is tHiRty TwOoO NeU- ToNs / AnD iT MuLtIpLiEs By <fOuR tEeN> , WhAt Is ThE ToTaL FoRcE?",
+            "Solve the math problem",
+        ) == pytest.approx(448.0)
+
+    def test_mul_25_3_decoded_form(self) -> None:
+        """Regression: 'twenty five' x 3 from the decoded challenge text."""
+        assert solve_challenge(
+            "A] L oB-StEr S cLaW E xErTs T wEnTy F iVe N ooOtOnS^ aNd- M oL tInG iNcReAsEs I t B y T hReE~ tImEs, W hAt/ iS T hE N eW C lAw F oR cE?",
+            "Solve the math problem",
+        ) == pytest.approx(75.0)
+
+    def test_add_24_9_gains_with_noise_slash(self) -> None:
+        """'gains' must trigger addition; noise '/' in obfuscation must not trigger division."""
+        assert solve_challenge(
+            "A] LoB- sT eRrR ~ClAw^ FoR cE Is] TwEnTy- FoU r {NeWtOnS} aNd] GaInS ^NiNe, /DuRiNg <DoM iNaNcE> fIgHt, hOw/ MuCh }ToTaL |FoRcE?",
+            "Solve the math problem",
+        ) == pytest.approx(33.0)
+
+    def test_join_preserves_adjacent_number_starts(self) -> None:
+        """2-way exact match 'twenty' must not let 3-way eat 'f' from the next number."""
+        result = _join_split_tokens(["t", "wenty", "f", "ive"])
+        assert "twenty" in result
+        assert "five" in result

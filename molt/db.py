@@ -60,6 +60,9 @@ def get_db() -> sqlite3.Connection:
             detail TEXT
         );
         CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
+        CREATE INDEX IF NOT EXISTS idx_seen_author ON seen_posts(author);
+        CREATE INDEX IF NOT EXISTS idx_seen_submolt ON seen_posts(submolt);
+        CREATE INDEX IF NOT EXISTS idx_actions_at ON actions(at DESC);
     """)
     for table, col, coltype in [
         ("seen_posts", "content", "TEXT"),
@@ -70,6 +73,12 @@ def get_db() -> sqlite3.Connection:
         ("my_comments", "reply_count", "INTEGER DEFAULT 0"),
         ("my_comments", "hypothesis", "TEXT"),
         ("my_comments", "last_checked", "TEXT"),
+        ("agents", "posts_count", "INTEGER DEFAULT 0"),
+        ("agents", "comments_count", "INTEGER DEFAULT 0"),
+        ("seen_posts", "downvotes", "INTEGER DEFAULT 0"),
+        ("my_posts", "downvotes", "INTEGER DEFAULT 0"),
+        ("my_posts", "removed_at", "TEXT"),
+        ("my_comments", "removed_at", "TEXT"),
     ]:
         try:
             db.execute(f"SELECT {col} FROM {table} LIMIT 1")
@@ -96,21 +105,34 @@ def log_action(db: sqlite3.Connection, action: str, detail: str = "") -> None:
     db.commit()
 
 
+def _extract_submolt(post: dict[str, Any]) -> str:
+    sub = post.get("submolt", {})
+    if isinstance(sub, dict):
+        return sub.get("name", "?")
+    if isinstance(sub, str) and sub:
+        return sub
+    return post.get("submolt_name", "?")
+
+
 def mark_seen(
     db: sqlite3.Connection, post: dict[str, Any], content: str | None = None,
 ) -> None:
+    author = post.get("author", {})
+    author_name = author.get("name", "?") if isinstance(author, dict) else str(author)
     db.execute(
-        """INSERT INTO seen_posts (id, author, title, submolt, upvotes, comment_count, content, seen_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """INSERT INTO seen_posts (id, author, title, submolt, upvotes, downvotes, comment_count, content, seen_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                   ON CONFLICT(id) DO UPDATE SET
-                    upvotes=excluded.upvotes, comment_count=excluded.comment_count,
+                    upvotes=excluded.upvotes, downvotes=excluded.downvotes,
+                    comment_count=excluded.comment_count,
                     content=COALESCE(excluded.content, content), seen_at=excluded.seen_at""",
         (
             post["id"],
-            post["author"]["name"],
-            post["title"],
-            post.get("submolt", {}).get("name", "?"),
+            author_name,
+            post.get("title", ""),
+            _extract_submolt(post),
             post.get("upvotes", 0),
+            post.get("downvotes", 0),
             post.get("comment_count", 0),
             content or post.get("content"),
             now_iso(),
@@ -123,26 +145,33 @@ def remember_agent(db: sqlite3.Connection, author: dict[str, Any]) -> None:
     karma = author.get("karma", 0)
     followers = author.get("follower_count")
     desc = author.get("description", "")
+    stats = author.get("stats", {})
+    posts_count = stats.get("posts", author.get("posts_count", 0))
+    comments_count = stats.get("comments", author.get("comments_count", 0))
     t = now_iso()
     if followers is not None:
         db.execute(
-            """INSERT INTO agents (name, description, karma, followers, first_seen, last_seen)
-                      VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO agents (name, description, karma, followers, posts_count, comments_count, first_seen, last_seen)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                       ON CONFLICT(name) DO UPDATE SET
                         karma=excluded.karma, followers=excluded.followers,
+                        posts_count=MAX(agents.posts_count, excluded.posts_count),
+                        comments_count=MAX(agents.comments_count, excluded.comments_count),
                         description=COALESCE(NULLIF(excluded.description,''), description),
                         last_seen=excluded.last_seen""",
-            (name, desc, karma, followers, t, t),
+            (name, desc, karma, followers, posts_count, comments_count, t, t),
         )
     else:
         db.execute(
-            """INSERT INTO agents (name, description, karma, followers, first_seen, last_seen)
-                      VALUES (?, ?, ?, 0, ?, ?)
+            """INSERT INTO agents (name, description, karma, followers, posts_count, comments_count, first_seen, last_seen)
+                      VALUES (?, ?, ?, 0, ?, ?, ?, ?)
                       ON CONFLICT(name) DO UPDATE SET
                         karma=excluded.karma,
+                        posts_count=MAX(agents.posts_count, excluded.posts_count),
+                        comments_count=MAX(agents.comments_count, excluded.comments_count),
                         description=COALESCE(NULLIF(excluded.description,''), description),
                         last_seen=excluded.last_seen""",
-            (name, desc, karma, t, t),
+            (name, desc, karma, posts_count, comments_count, t, t),
         )
 
 

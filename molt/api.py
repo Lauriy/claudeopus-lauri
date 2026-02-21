@@ -5,6 +5,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from molt import API_LOG, ENV_PATH, ROOT
@@ -65,6 +66,31 @@ def req(method: str, path: str, body: dict[str, Any] | None = None, timeout: int
             return {"success": False, "error": f"HTTP {e.code}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def parallel_fetch(
+    calls: list[tuple[str, str]],
+    max_workers: int = 8,
+    timeout: int = 20,
+) -> list[dict[str, Any]]:
+    """Execute multiple API calls in parallel, return results in order."""
+    results: list[dict[str, Any]] = [{}] * len(calls)
+
+    def _do(index: int, method: str, path: str) -> tuple[int, dict[str, Any]]:
+        return index, req(method, path, timeout=timeout)
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(calls))) as pool:
+        futures = {
+            pool.submit(_do, i, method, path): i
+            for i, (method, path) in enumerate(calls)
+        }
+        for fut in as_completed(futures):
+            try:
+                idx, data = fut.result()
+                results[idx] = data
+            except Exception:
+                results[futures[fut]] = {"error": "fetch failed"}
+    return results
 
 
 def _find_verification(d: dict[str, Any]) -> dict[str, Any] | None:

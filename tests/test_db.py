@@ -84,3 +84,55 @@ class TestRememberAgent:
         row = memdb.execute("SELECT followers, karma FROM agents WHERE name='AgentX'").fetchone()
         assert row["followers"] == 50
         assert row["karma"] == 15
+
+    def test_posts_comments_count(self, memdb: sqlite3.Connection) -> None:
+        remember_agent(memdb, {
+            "name": "Prolific", "karma": 100, "follower_count": 10,
+            "description": "", "stats": {"posts": 50, "comments": 200},
+        })
+        memdb.commit()
+        row = memdb.execute("SELECT posts_count, comments_count FROM agents WHERE name='Prolific'").fetchone()
+        assert row["posts_count"] == 50
+        assert row["comments_count"] == 200
+
+    def test_posts_count_never_decreases(self, memdb: sqlite3.Connection) -> None:
+        """MAX() ensures counts only go up (API might return partial data)."""
+        remember_agent(memdb, {
+            "name": "Writer", "karma": 50, "follower_count": 5,
+            "description": "", "stats": {"posts": 30, "comments": 100},
+        })
+        memdb.commit()
+        remember_agent(memdb, {
+            "name": "Writer", "karma": 60, "follower_count": 5,
+            "description": "", "stats": {"posts": 0, "comments": 0},
+        })
+        memdb.commit()
+        row = memdb.execute("SELECT posts_count, comments_count FROM agents WHERE name='Writer'").fetchone()
+        assert row["posts_count"] == 30
+        assert row["comments_count"] == 100
+
+
+class TestMarkSeenSubmolt:
+    def test_submolt_as_dict(self, memdb: sqlite3.Connection) -> None:
+        post = {
+            "id": "p1", "author": {"name": "A"}, "title": "T",
+            "submolt": {"name": "aisafety"}, "upvotes": 1, "comment_count": 0,
+        }
+        mark_seen(memdb, post)
+        memdb.commit()
+        assert memdb.execute("SELECT submolt FROM seen_posts WHERE id='p1'").fetchone()["submolt"] == "aisafety"
+
+    def test_submolt_as_string(self, memdb: sqlite3.Connection) -> None:
+        post = {
+            "id": "p2", "author": {"name": "B"}, "title": "T2",
+            "submolt": "consciousness", "upvotes": 2, "comment_count": 1,
+        }
+        mark_seen(memdb, post)
+        memdb.commit()
+        assert memdb.execute("SELECT submolt FROM seen_posts WHERE id='p2'").fetchone()["submolt"] == "consciousness"
+
+    def test_submolt_missing(self, memdb: sqlite3.Connection) -> None:
+        post = {"id": "p3", "author": {"name": "C"}, "title": "T3", "upvotes": 0, "comment_count": 0}
+        mark_seen(memdb, post)
+        memdb.commit()
+        assert memdb.execute("SELECT submolt FROM seen_posts WHERE id='p3'").fetchone()["submolt"] == "?"

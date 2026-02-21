@@ -21,6 +21,7 @@ def memdb() -> Iterator[sqlite3.Connection]:
             title TEXT,
             submolt TEXT,
             upvotes INTEGER DEFAULT 0,
+            downvotes INTEGER DEFAULT 0,
             comment_count INTEGER DEFAULT 0,
             content TEXT,
             seen_at TEXT
@@ -29,20 +30,32 @@ def memdb() -> Iterator[sqlite3.Connection]:
             id TEXT PRIMARY KEY,
             submolt TEXT,
             title TEXT,
-            posted_at TEXT
+            posted_at TEXT,
+            upvotes INTEGER DEFAULT 0,
+            downvotes INTEGER DEFAULT 0,
+            comment_count INTEGER DEFAULT 0,
+            last_checked TEXT,
+            removed_at TEXT
         );
         CREATE TABLE IF NOT EXISTS my_comments (
             id TEXT PRIMARY KEY,
             post_id TEXT,
             post_author TEXT,
             content TEXT,
-            commented_at TEXT
+            commented_at TEXT,
+            upvotes INTEGER DEFAULT 0,
+            reply_count INTEGER DEFAULT 0,
+            hypothesis TEXT,
+            last_checked TEXT,
+            removed_at TEXT
         );
         CREATE TABLE IF NOT EXISTS agents (
             name TEXT PRIMARY KEY,
             description TEXT,
             karma INTEGER DEFAULT 0,
             followers INTEGER DEFAULT 0,
+            posts_count INTEGER DEFAULT 0,
+            comments_count INTEGER DEFAULT 0,
             note TEXT,
             first_seen TEXT,
             last_seen TEXT

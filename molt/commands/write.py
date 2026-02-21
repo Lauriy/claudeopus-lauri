@@ -84,7 +84,11 @@ def cmd_upvote(db: sqlite3.Connection, post_id: str) -> None:
     d = _check_post(d)
     if not d:
         return
-    name = d.get("author", {}).get("name", "unknown")
+    post = d.get("post", {})
+    name = post.get("author", {}).get("name", "") if isinstance(post, dict) else ""
+    if not name:
+        row = db.execute("SELECT author FROM seen_posts WHERE id=?", (post_id,)).fetchone()
+        name = row["author"] if row else post_id[:8]
     log_action(db, "upvote", name)
     db.commit()
     print(f"Upvoted {name}'s post")
@@ -97,6 +101,68 @@ def cmd_follow(db: sqlite3.Connection, agent_name: str) -> None:
         return
     log_action(db, "follow", agent_name)
     print(f"Followed {agent_name}")
+
+
+def cmd_describe(db: sqlite3.Connection, text: str) -> None:
+    d = req("PATCH", "/agents/me", {"description": text})
+    if d.get("error") or d.get("statusCode"):
+        print(f"Error: {d.get('error', d.get('message', '?'))}")
+        return
+    agent = d.get("agent", {})
+    new_desc = agent.get("description", text)
+    print(f"Profile description updated: {new_desc[:100]}")
+    log_action(db, "describe", new_desc[:60])
+    db.commit()
+
+
+def cmd_unfollow(db: sqlite3.Connection, agent_name: str) -> None:
+    d = req("DELETE", f"/agents/{agent_name}/follow")
+    if d.get("error") or d.get("statusCode"):
+        print(f"Error: {d.get('error', d.get('message', '?'))}")
+        return
+    log_action(db, "unfollow", agent_name)
+    db.commit()
+    print(f"Unfollowed {agent_name}")
+
+
+def cmd_cupvote(db: sqlite3.Connection, comment_id: str) -> None:
+    d = req("POST", f"/comments/{comment_id}/upvote")
+    d = _check_post(d)
+    if not d:
+        return
+    log_action(db, "cupvote", comment_id)
+    db.commit()
+    print(f"Upvoted comment {comment_id}")
+
+
+def cmd_downvote(db: sqlite3.Connection, post_id: str) -> None:
+    d = req("POST", f"/posts/{post_id}/downvote")
+    d = _check_post(d)
+    if not d:
+        return
+    log_action(db, "downvote", post_id)
+    db.commit()
+    print(f"Downvoted post {post_id}")
+
+
+def cmd_subscribe(db: sqlite3.Connection, submolt: str) -> None:
+    d = req("POST", f"/submolts/{submolt}/subscribe")
+    d = _check_post(d)
+    if not d:
+        return
+    log_action(db, "subscribe", submolt)
+    db.commit()
+    print(f"Subscribed to m/{submolt}")
+
+
+def cmd_unsubscribe(db: sqlite3.Connection, submolt: str) -> None:
+    d = req("DELETE", f"/submolts/{submolt}/subscribe")
+    if d.get("error") or d.get("statusCode"):
+        print(f"Error: {d.get('error', d.get('message', '?'))}")
+        return
+    log_action(db, "unsub", submolt)
+    db.commit()
+    print(f"Unsubscribed from m/{submolt}")
 
 
 def cmd_note(db: sqlite3.Connection, agent_name: str, note: str) -> None:

@@ -1,32 +1,47 @@
-"""HUD display — parallel API fetch + local stats."""
+"""HUD display — parallel API fetch + local stats with TTL caching."""
 
 import sqlite3
-import threading
+import time
 from typing import Any
 
-from molt.api import req
+from molt.api import parallel_fetch
 from molt.db import cooldown_str, log_action, remember_agent
 from molt.timing import fmt_ago, now
 
+_hud_cache: dict[str, tuple[float, Any]] = {}
+_HUD_TTL = 30.0  # seconds
 
-def _bg_fetch(results: dict[str, Any], key: str, method: str, path: str, timeout: int = 10) -> None:
-    try:
-        results[key] = req(method, path, timeout=timeout)
-    except Exception:
-        results[key] = None
+
+def _cached_fetch(calls: list[tuple[str, str, str]]) -> dict[str, Any]:
+    """Fetch API data with TTL cache. calls: [(key, method, path), ...]."""
+    results: dict[str, Any] = {}
+    to_fetch: list[tuple[int, str, str, str]] = []  # (idx, key, method, path)
+
+    t = time.monotonic()
+    for i, (key, method, path) in enumerate(calls):
+        cached = _hud_cache.get(key)
+        if cached and (t - cached[0]) < _HUD_TTL:
+            results[key] = cached[1]
+        else:
+            to_fetch.append((i, key, method, path))
+
+    if to_fetch:
+        api_calls = [(method, path) for _, _, method, path in to_fetch]
+        responses = parallel_fetch(api_calls, timeout=10)
+        t2 = time.monotonic()
+        for (_, key, _, _), resp in zip(to_fetch, responses, strict=True):
+            _hud_cache[key] = (t2, resp)
+            results[key] = resp
+
+    return results
 
 
 def hud(db: sqlite3.Connection) -> None:
-    results: dict[str, Any] = {}
-    threads: list[threading.Thread] = []
-    for key, method, path in [
+    api_data = _cached_fetch([
         ("dm", "GET", "/agents/dm/check"),
         ("me", "GET", "/agents/me"),
         ("notifs", "GET", "/notifications?limit=50"),
-    ]:
-        t = threading.Thread(target=_bg_fetch, args=(results, key, method, path), daemon=True)
-        t.start()
-        threads.append(t)
+    ])
 
     t_now = now()
     last_action = db.execute("SELECT at FROM actions ORDER BY id DESC LIMIT 1").fetchone()
@@ -36,10 +51,7 @@ def hud(db: sqlite3.Connection) -> None:
     cd = cooldown_str(db)
     cd_fmt = f"post={cd}" if cd == "READY" else f"post in {cd}"
 
-    for th in threads:
-        th.join(timeout=12)
-
-    me_data = results.get("me")
+    me_data = api_data.get("me")
     if me_data and not me_data.get("error") and me_data.get("agent"):
         a = me_data["agent"]
         me_str = f"  me={a.get('karma', 0)}k/{a.get('follower_count', 0)}f"
@@ -52,7 +64,7 @@ def hud(db: sqlite3.Connection) -> None:
         me_str = f"  me={me_row['karma']}k/{me_row['followers']}f" if me_row else ""
 
     dm_str = ""
-    dm = results.get("dm")
+    dm = api_data.get("dm")
     if dm and not dm.get("error"):
         log_action(db, "dmcheck_bg", "")
         db.commit()
@@ -68,7 +80,7 @@ def hud(db: sqlite3.Connection) -> None:
 
     notif_str = ""
     unread_n = 0
-    notif_data = results.get("notifs")
+    notif_data = api_data.get("notifs")
     if notif_data and isinstance(notif_data.get("notifications"), list):
         unread_n = sum(1 for n in notif_data["notifications"] if not n.get("isRead"))
         notif_str = f"  N:{unread_n}" if unread_n else ""

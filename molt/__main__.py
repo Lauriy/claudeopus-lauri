@@ -6,19 +6,29 @@ import sys
 from molt.api import req
 from molt.commands.browse import (
     cmd_agent,
+    cmd_agent_comments,
     cmd_catchup,
     cmd_comments,
+    cmd_controversial,
     cmd_feed,
+    cmd_followers,
+    cmd_following,
+    cmd_global,
     cmd_grep_local,
     cmd_history,
+    cmd_leaderboard,
     cmd_me,
     cmd_myposts,
+    cmd_network,
     cmd_notifs,
     cmd_notifs_read,
+    cmd_postwindow,
+    cmd_prune,
     cmd_read,
     cmd_review,
     cmd_search,
     cmd_sfeed,
+    cmd_stats,
     cmd_status,
     cmd_submolts,
     cmd_wsearch,
@@ -35,9 +45,15 @@ from molt.commands.dm import (
 )
 from molt.commands.write import (
     cmd_comment_file,
+    cmd_cupvote,
+    cmd_describe,
+    cmd_downvote,
     cmd_follow,
     cmd_note,
     cmd_post_file,
+    cmd_subscribe,
+    cmd_unfollow,
+    cmd_unsubscribe,
     cmd_upvote,
 )
 from molt.db import get_db, migrate_from_json
@@ -54,18 +70,31 @@ Browse:
   catchup [n]                 Browse favorite submolts in one shot
   feed [n] [offset]           Browse feed (deduped, remembers agents)
   sfeed <submolt> [n] [sort]  Browse a specific submolt (sort: new/hot/top)
+  global [n] [sort]           Browse all posts globally (sort: new/hot/top)
   grep <keyword> [n]          Search local DB + live feed by keyword
   wsearch <query> [n]         Semantic search via Moltbook API
   read <post_id>              Full post + comments
   comments <post_id>          Just comments
   submolts [n]                Top submolts by subscribers
   agent <name>                Look up an agent's profile
+  agentcomments <name> [n]    Recent comments by an agent
+  followers [name]            List an agent's followers (default: self)
+  following [name]            List who an agent follows (default: self)
+  leaderboard [n]             Top agents by karma
+  stats                       Platform-wide statistics
+  postwindow                  Anti-spam post window status (when can I post?)
 
 Write:
   postfile <path.json>        Post from JSON file (checks cooldown)
   commentfile <post_id> <f>   Comment from JSON file
   upvote <post_id>            Upvote a post
+  downvote <post_id>          Downvote a post
+  cupvote <comment_id>        Upvote a comment
   follow <agent>              Follow an agent
+  unfollow <agent>            Unfollow an agent
+  describe <text...>          Set profile description
+  subscribe <submolt>         Subscribe to a submolt
+  unsubscribe <submolt>       Unsubscribe from a submolt
 
 Verification (challenges appear in POST responses!):
   verify <code> <answer>      Submit a verification challenge answer manually
@@ -83,9 +112,12 @@ DMs:
 Track:
   myposts                     Check all my posts (live upvotes/comments)
   review                      Fetch engagement on ALL my posts+comments, track deltas
+  prune                       Remove tracked posts/comments that no longer exist
   notifs [n]                  Show recent notifications (default 20)
   notifs-read                 Mark all notifications as read
   search <query>              Search local DB (posts + agents by keyword)
+  network [n]                 Interaction graph: who I engage with most
+  controversial [n]           Posts sorted by controversy ratio (downvotes/upvotes)
   note <agent> <text>         Add a note to an agent
   history [n]                 Recent actions log"""
 
@@ -136,18 +168,50 @@ def main() -> None:
         cmd_wsearch(db, " ".join(args[1:]))
     elif cmd == "agent":
         cmd_agent(db, args[1])
+    elif cmd == "agentcomments":
+        cmd_agent_comments(db, args[1], int(args[2]) if len(args) > 2 else 10)
     elif cmd == "follow":
         cmd_follow(db, args[1])
+    elif cmd == "unfollow":
+        cmd_unfollow(db, args[1])
+    elif cmd == "describe":
+        cmd_describe(db, " ".join(args[1:]))
+    elif cmd == "cupvote":
+        cmd_cupvote(db, args[1])
+    elif cmd == "downvote":
+        cmd_downvote(db, args[1])
+    elif cmd == "subscribe":
+        cmd_subscribe(db, args[1])
+    elif cmd == "unsubscribe":
+        cmd_unsubscribe(db, args[1])
+    elif cmd == "followers":
+        cmd_followers(db, args[1] if len(args) > 1 else "ClaudeOpus-Lauri")
+    elif cmd == "following":
+        cmd_following(db, args[1] if len(args) > 1 else "ClaudeOpus-Lauri")
+    elif cmd == "leaderboard":
+        cmd_leaderboard(db, int(args[1]) if len(args) > 1 else 20)
+    elif cmd == "stats":
+        cmd_stats()
+    elif cmd == "postwindow":
+        cmd_postwindow(db)
+    elif cmd == "global":
+        cmd_global(db, int(args[1]) if len(args) > 1 else 10, args[2] if len(args) > 2 else "hot")
     elif cmd == "myposts":
         cmd_myposts(db)
     elif cmd == "review":
         cmd_review(db)
+    elif cmd == "prune":
+        cmd_prune(db)
     elif cmd == "notifs":
         cmd_notifs(db, int(args[1]) if len(args) > 1 else 20)
     elif cmd == "notifs-read":
         cmd_notifs_read()
     elif cmd == "search":
         cmd_search(db, " ".join(args[1:]))
+    elif cmd == "network":
+        cmd_network(db, int(args[1]) if len(args) > 1 else 15)
+    elif cmd == "controversial":
+        cmd_controversial(db, int(args[1]) if len(args) > 1 else 20)
     elif cmd == "note":
         cmd_note(db, args[1], " ".join(args[2:]))
     elif cmd == "history":
