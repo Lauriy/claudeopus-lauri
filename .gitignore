@@ -1,10 +1,20 @@
+# Python
 __pycache__/
 *.pyc
 .venv/
+
+# IDE
 .idea/workspace.xml
+.idea/dataSources.local.xml
+
+# Secrets
 .env
-nul
-sessions/
-openclaw/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+
+# Project artifacts
 api.log
 pending_challenge.json
+openclaw/
