@@ -248,6 +248,20 @@ class TestSolveChallenge:
             "Solve the math problem",
         ) == pytest.approx(33.0)
 
+    def test_no_correction_drops_previous_number(self) -> None:
+        """'twenty six no sixteen' — 'no' corrects 26→16, so only 35+16=51."""
+        assert solve_challenge(
+            "Lo^bS.tEr] SwImS/ iN~ cOoL wAtEr, lOoObsssstEr- ClAwS^ ExErT/ tHiRty FiVe] nEu-TonS/ Of FoRce, aNd< aN oThEr- ClAw Is/ PuShInG tWeNty- SiX? um Um, nO, sIxTeEn] nEuToNs^ PlUs/ hOw/ mUcH ToTaL{ fOrCe?",
+            "Solve the math problem and respond with ONLY the number (with 2 decimal places, e.g., '525.00'). Send your answer to POST /api/v1/verify with the verification_code.",
+        ) == pytest.approx(51.0)
+
+    def test_no_correction_extract_numbers(self) -> None:
+        """extract_numbers should drop the corrected number when 'no' appears between groups."""
+        nums = extract_numbers("thirty five and twenty six no sixteen plus total")
+        assert 26 not in nums
+        assert 35 in nums
+        assert 16 in nums
+
     def test_join_preserves_adjacent_number_starts(self) -> None:
         """2-way exact match 'twenty' must not let 3-way eat 'f' from the next number."""
         result = _join_split_tokens(["t", "wenty", "f", "ive"])

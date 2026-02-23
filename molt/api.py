@@ -2,17 +2,23 @@
 
 import json
 import os
+import sqlite3
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-from molt import API_LOG, ENV_PATH, ROOT
+from molt import API_LOG, DB_PATH, ENV_PATH, ROOT
 from molt.solver import decode_obfuscated, solve_challenge
 from molt.timing import now_iso
 
 API = "https://www.moltbook.com/api/v1"
+_RATE_WINDOW = 60.0  # seconds
+_RATE_LIMIT = 100
+_rate_lock = threading.Lock()
 
 
 def _load_key() -> str:
@@ -42,7 +48,37 @@ def _log_api(method: str, path: str, status: int, body_json: dict[str, Any]) -> 
         pass
 
 
+def _rate_db() -> sqlite3.Connection:
+    """Get a dedicated connection for rate tracking (thread-safe)."""
+    db = sqlite3.connect(str(DB_PATH), timeout=5)
+    db.execute("CREATE TABLE IF NOT EXISTS rate_log (ts REAL)")
+    return db
+
+
+def _append_rate_log() -> None:
+    """Record a request timestamp."""
+    with _rate_lock:
+        db = _rate_db()
+        db.execute("INSERT INTO rate_log (ts) VALUES (?)", (time.time(),))
+        db.execute("DELETE FROM rate_log WHERE ts < ?", (time.time() - _RATE_WINDOW,))
+        db.commit()
+        db.close()
+
+
+def rate_usage() -> tuple[int, int]:
+    """Return (requests_in_last_minute, limit)."""
+    cutoff = time.time() - _RATE_WINDOW
+    try:
+        db = _rate_db()
+        count = db.execute("SELECT COUNT(*) FROM rate_log WHERE ts > ?", (cutoff,)).fetchone()[0]
+        db.close()
+    except Exception:
+        count = 0
+    return count, _RATE_LIMIT
+
+
 def req(method: str, path: str, body: dict[str, Any] | None = None, timeout: int = 30) -> dict[str, Any]:
+    _append_rate_log()
     url = f"{API}{path}"
     data = json.dumps(body).encode() if body else None
     r = urllib.request.Request(url, data=data, method=method)

@@ -104,18 +104,34 @@ def _join_split_tokens(tokens: list[str]) -> list[str]:
 
 
 def extract_numbers(text: str) -> list[int | float]:
-    """Extract number groups from decoded text."""
+    """Extract number groups from decoded text, handling 'no' corrections."""
     tokens = _join_split_tokens(text.lower().split())
-    numbers: list[int | float] = []
+    # Build list of (number, gap_tokens_before_it) to detect "no" corrections
+    groups: list[tuple[int | float, list[str]]] = []
     buf: list[str] = []
+    gap: list[str] = []  # non-number tokens since last number group
     for t in tokens:
         if _fuzzy_num(t) is not None:
             buf.append(t)
         elif buf:
-            numbers.append(words_to_number(buf))
+            groups.append((words_to_number(buf), gap))
             buf = []
+            gap = [t]
+        else:
+            gap.append(t)
     if buf:
-        numbers.append(words_to_number(buf))
+        groups.append((words_to_number(buf), gap))
+
+    # Drop numbers followed by "no" correction: "twenty six no sixteen" → keep only sixteen
+    numbers: list[int | float] = []
+    for i, (num, _gap_before) in enumerate(groups):
+        # Check if NEXT group's gap contains "no" — meaning THIS number gets corrected away
+        if i + 1 < len(groups):
+            next_gap = groups[i + 1][1]
+            if any(w == "no" for w in next_gap):
+                continue  # skip this number, the next one replaces it
+        numbers.append(num)
+
     numbers.extend(float(m.group()) for m in re.finditer(r"\b\d+\.?\d*\b", text))
     return numbers
 

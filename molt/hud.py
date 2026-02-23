@@ -4,7 +4,7 @@ import sqlite3
 import time
 from typing import Any
 
-from molt.api import parallel_fetch
+from molt.api import parallel_fetch, rate_usage
 from molt.db import cooldown_str, log_action, remember_agent
 from molt.timing import fmt_ago, now
 
@@ -85,7 +85,9 @@ def hud(db: sqlite3.Connection) -> None:
         unread_n = sum(1 for n in notif_data["notifications"] if not n.get("isRead"))
         notif_str = f"  N:{unread_n}" if unread_n else ""
 
-    print(f"[{t_now.strftime('%H:%M:%S UTC')}] {cd_fmt}  seen={seen_count}  agents={agent_count}{me_str}{dm_str}{notif_str}{gap}")
+    used, limit = rate_usage()
+    rate_str = f"  api={used}/{limit}" if used > 0 else ""
+    print(f"[{t_now.strftime('%H:%M:%S UTC')}] {cd_fmt}  seen={seen_count}  agents={agent_count}{me_str}{dm_str}{notif_str}{rate_str}{gap}")
     if dm_str and ("req" in dm_str or "SUSPENDED" in dm_str) and dm_str not in ("  DM:ok", "  DM:?"):
         print("  *** DM ALERT — run: python molt.py dmrequests ***")
     if notif_str:
