@@ -46,7 +46,7 @@ def _fuzzy_num(token: str) -> int | None:
     if len(token) < 3 or token in _NOT_NUMBERS:
         return None
     for i in range(len(token) + 1):
-        for c in "aeeioou":
+        for c in "abcdefghilmnorstuvy":
             candidate = token[:i] + c + token[i:]
             if candidate in WORD_TO_NUM:
                 return WORD_TO_NUM[candidate]

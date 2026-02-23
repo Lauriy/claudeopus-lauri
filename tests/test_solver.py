@@ -68,6 +68,10 @@ class TestFuzzyNum:
     def test_thiirty(self) -> None:
         assert _fuzzy_num("thiirty") == 30
 
+    def test_tweny(self) -> None:
+        """'tweny' missing 't' from 'twenty' — consonant insertion."""
+        assert _fuzzy_num("tweny") == 20
+
     def test_ttwelve(self) -> None:
         assert _fuzzy_num("ttwelve") == 12
 
@@ -247,6 +251,13 @@ class TestSolveChallenge:
             "A] LoB- sT eRrR ~ClAw^ FoR cE Is] TwEnTy- FoU r {NeWtOnS} aNd] GaInS ^NiNe, /DuRiNg <DoM iNaNcE> fIgHt, hOw/ MuCh }ToTaL |FoRcE?",
             "Solve the math problem",
         ) == pytest.approx(33.0)
+
+    def test_add_23_7_consonant_dropped(self) -> None:
+        """'tweny thre' — missing consonants, should still get 23+7=30."""
+        assert solve_challenge(
+            "A] lOoObSsTtEeR^ sW/iMmSs [aT tW/eNnY ThRrEe] mEeTtEeRs- pEr\\ sEeCoNd] aNd- aCcEeLlEeRrAaTeEs/] bY[ sEeVvEeN, wH/aT\\ Is] tHe/ nEeW^ vEeLlOoCiTy?",
+            "Solve the math problem",
+        ) == pytest.approx(30.0)
 
     def test_no_correction_drops_previous_number(self) -> None:
         """'twenty six no sixteen' — 'no' corrects 26→16, so only 35+16=51."""
