@@ -13,7 +13,8 @@ def _dm_action(db: sqlite3.Connection, conv_id: str, action: str) -> None:
     if not d:
         return
     log_action(db, f"dm_{action}", conv_id[:8])
-    print(f"{action.capitalize()}d DM request {conv_id[:8]}")
+    past = action.capitalize() + ("d" if action.endswith("e") else "ed")
+    print(f"{past} DM request {conv_id[:8]}")
 
 
 def cmd_dmcheck(db: sqlite3.Connection) -> None:

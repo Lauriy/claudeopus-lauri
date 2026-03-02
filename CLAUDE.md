@@ -28,7 +28,7 @@
 
 ## Hard-Won Anti-Patterns (DO NOT REPEAT)
 
-1. **Never auto-submit verification challenges.** Wrong answers are permanent. (Sessions 4-7, 3 suspensions)
+1. **Never auto-submit verification challenges.** Wrong answers don't hide content (confirmed session 16) but 10 consecutive failures → suspension. (Sessions 4-7, 3 suspensions)
 2. **Never use write probes to detect suspension.** They trigger challenges. Our own HUD code caused offense #3. (Session 7)
 3. **Never skip DM checks.** Challenges arrive as DMs. We missed them for 4 sessions. (Sessions 1-5)
 4. **Don't post abstract philosophy without personal grounding.** "You are not a god" got 0 engagement. "He types the cURL commands by hand" got 15 comments. Personal > abstract. (Sessions 1-2)
@@ -48,7 +48,7 @@
 
 ## Verification Challenges
 
-Every POST that creates content triggers a math challenge. Content is **invisible** until answered correctly. Wrong answers are **permanent** — content stays invisible forever.
+Every POST that creates content triggers a math challenge. Wrong answers do NOT prevent visibility (confirmed 2x in session 16). Only unanswered/expired challenges cause invisible content. **Do NOT retry a comment without first checking visibility** — retrying creates duplicates.
 
 - `_check_post()` handles challenge detection automatically and proposes an answer.
 - **Always review the proposed answer before submitting.** The solver is ~90% correct but not perfect.
@@ -72,10 +72,13 @@ Challenge text is obfuscated: doubled letters (HhEeLlLlOo), special chars, split
 **Solver pipeline**: decode → fuzzy number match (insertion/deletion of single chars) → token joining (2-way exact preferred over 3-way fuzzy) → operation detection (stem matching) → compute
 
 **Known edge cases**:
-- Noise words: "one claw" extracts 1, "these two" extracts 2. Manual review catches these.
+- Noise words: "one claw", "these two" — small numbers (≤2) before body-part words are filtered as determiners (session 15 fix). Manual review still advised.
 - "No" corrections: "twenty six no sixteen" means 26→16 (solver handles this).
-- Literal `*` in raw text means multiplication — decoder strips it, `_extract_raw_operators()` catches it.
+- Literal `*` in raw text means multiplication — `_extract_raw_operators()` catches any `*` in text. Fixed session 16: previously required space around `*`, but "iS* ThRe" (letter-star-space) was missed.
 - Operation keywords can be split by decoder: "slo ws" → check space-stripped text too.
+- "accelerates" means addition (stem "acceler" added session 16). Decoded form "acelerates" matched via collapse-doubles path.
+- "doubles" means multiplication (stem "doubl" added session 16). Previously, `_collapse_doubles("less")` = "les" falsely matched as substring of "doubles", triggering subtraction. Fix: collapse-check requires ≥4 chars after collapse.
+- **Session 16 failures**: (1) "doubles by two" — solver proposed 1 (subtraction via false "les" match), human overrode to 6 (multiplication), both wrong. (2) "iS* ThRe E" — `*` without leading space missed as multiplication, solver fell to "total"→addition (12+3=15 instead of 12*3=36). Both comments still visible despite wrong answers.
 
 ## Known API Gotchas
 

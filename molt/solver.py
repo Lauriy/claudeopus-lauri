@@ -103,33 +103,56 @@ def _join_split_tokens(tokens: list[str]) -> list[str]:
     return result
 
 
+# Body-part / context words that indicate a preceding small number is a determiner, not a measurement.
+# "one claw" → 1 is noise, "with one claw" → 1 is noise.
+_NOISE_FOLLOWERS = frozenset({
+    "claw", "claws", "lobster", "lobsters", "leg", "legs",
+    "antenna", "antennae", "tail", "tails", "eye", "eyes",
+    "loobster", "loobsters", "lob",  # decoder artifacts
+})
+# Demonstrative pronouns that make a following small number a reference, not a measurement.
+# "these two" → 2 is noise (means "these two values"), "multiply those two" → same.
+_NOISE_PREDECESSORS = frozenset({"these", "those", "both"})
+
+
 def extract_numbers(text: str) -> list[int | float]:
-    """Extract number groups from decoded text, handling 'no' corrections."""
+    """Extract number groups from decoded text, handling 'no' corrections and noise words."""
     tokens = _join_split_tokens(text.lower().split())
-    # Build list of (number, gap_tokens_before_it) to detect "no" corrections
-    groups: list[tuple[int | float, list[str]]] = []
+    # Build list of (number, gap_before, trailing) to detect corrections and noise
+    # trailing = first non-number tokens after this group
+    groups: list[tuple[int | float, list[str], list[str]]] = []
     buf: list[str] = []
     gap: list[str] = []  # non-number tokens since last number group
     for t in tokens:
         if _fuzzy_num(t) is not None:
             buf.append(t)
         elif buf:
-            groups.append((words_to_number(buf), gap))
+            groups.append((words_to_number(buf), gap, [t]))
             buf = []
-            gap = [t]
+            gap = [t]  # token starts gap for next group too
         else:
             gap.append(t)
+            # Extend trailing context of previous group
+            if groups and len(groups[-1][2]) < 3:
+                groups[-1][2].append(t)
     if buf:
-        groups.append((words_to_number(buf), gap))
+        groups.append((words_to_number(buf), gap, []))
 
     # Drop numbers followed by "no" correction: "twenty six no sixteen" → keep only sixteen
+    # Also drop noise-word numbers: small nums (≤2) followed by body-part words
     numbers: list[int | float] = []
-    for i, (num, _gap_before) in enumerate(groups):
+    for i, (num, _gap_before, trailing) in enumerate(groups):
         # Check if NEXT group's gap contains "no" — meaning THIS number gets corrected away
         if i + 1 < len(groups):
             next_gap = groups[i + 1][1]
             if any(w == "no" for w in next_gap):
                 continue  # skip this number, the next one replaces it
+        # Filter noise: "one claw", "these two" — small number used as determiner
+        if num <= 2 and trailing and trailing[0] in _NOISE_FOLLOWERS:
+            continue
+        # Filter noise: "these two", "those two" — demonstrative pronoun + small number
+        if num <= 2 and _gap_before and _gap_before[-1] in _NOISE_PREDECESSORS:
+            continue
         numbers.append(num)
 
     numbers.extend(float(m.group()) for m in re.finditer(r"\b\d+\.?\d*\b", text))
@@ -153,8 +176,8 @@ def _extract_raw_operators(text: str) -> set[str]:
     # Look for standalone * / + - surrounded by spaces or punctuation
     for m in re.finditer(r"(?<=[}\]~)\s])\s*([*/+\-])\s*(?=\s*[A-Za-z{(\[])", text):
         ops.add(m.group(1))
-    # Also check for * appearing with spaces around it (/ excluded — too many false positives from obfuscation noise)
-    if re.search(r"\s\*\s", text):
+    # * is never used as obfuscation noise (unlike / ^ ~ etc.), so any * means multiplication
+    if "*" in text:
         ops.add("*")
     return ops
 
@@ -172,31 +195,55 @@ def solve_challenge(challenge_text: str, instructions: str = "") -> float | None
         return None
 
     raw_ops = _extract_raw_operators(challenge_text)
+    if raw_ops:
+        print(f"  Raw operators: {raw_ops}")
     combined = (instructions + " " + decoded).lower()
     combined_nospace = combined.replace(" ", "")
     combined_dedup = _collapse_doubles(combined)
 
     def _has(stems: tuple[str, ...]) -> bool:
         return any(
-            s in combined or s in combined_nospace or _collapse_doubles(s) in combined_dedup
+            s in combined or s in combined_nospace
+            or (len(_collapse_doubles(s)) >= 4 and _collapse_doubles(s) in combined_dedup)
             for s in stems
         )
 
-    if "*" in raw_ops or _has(("multipl", "product", "times")):
+    def _which(stems: tuple[str, ...]) -> str | None:
+        """Return which stem matched, for debugging."""
+        for s in stems:
+            if s in combined or s in combined_nospace:
+                return s
+            cs = _collapse_doubles(s)
+            if len(cs) >= 4 and cs in combined_dedup:
+                return f"{s}(collapse:{cs})"
+        return None
+
+    if "*" in raw_ops or _has(("multipl", "product", "times", "doubl")):
+        op = "multiply"
+        match = "*" if "*" in raw_ops else _which(("multipl", "product", "times", "doubl"))
         result = 1.0
         for n in nums:
             result *= n
     elif _has(("subtract", "minus", "differ", "lose", "lost", "decreas", "less", "reduc", "slow")):
+        op = "subtract"
+        match = _which(("subtract", "minus", "differ", "lose", "lost", "decreas", "less", "reduc", "slow"))
         result = nums[0]
         for n in nums[1:]:
             result -= n
-    elif _has(("add", "plus", "sum", "combin", "gain", "increas", "total")):
+    elif _has(("add", "plus", "sum", "combin", "gain", "increas", "total", "acceler")):
+        op = "add"
+        match = _which(("add", "plus", "sum", "combin", "gain", "increas", "total", "acceler"))
         result = sum(nums)
     elif "/" in raw_ops or _has(("divid", "ratio", "split")):
+        op = "divide"
+        match = "/" if "/" in raw_ops else _which(("divid", "ratio", "split"))
         result = nums[0]
         for n in nums[1:]:
             if n != 0:
                 result /= n
     else:
+        op = "add(default)"
+        match = None
         result = sum(nums)
+    print(f"  Operation: {op} (matched: {match})")
     return float(result)
