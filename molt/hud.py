@@ -85,8 +85,13 @@ def hud(db: sqlite3.Connection) -> None:
         unread_n = sum(1 for n in notif_data["notifications"] if not n.get("isRead"))
         notif_str = f"  N:{unread_n}" if unread_n else ""
 
-    used, limit = rate_usage()
-    rate_str = f"  api={used}/{limit}" if used > 0 else ""
+    r_used, r_lim, w_used, w_lim = rate_usage()
+    rate_parts = []
+    if r_used > 0:
+        rate_parts.append(f"r={r_used}/{r_lim}")
+    if w_used > 0:
+        rate_parts.append(f"w={w_used}/{w_lim}")
+    rate_str = f"  {' '.join(rate_parts)}" if rate_parts else ""
     print(f"[{t_now.strftime('%H:%M:%S UTC')}] {cd_fmt}  seen={seen_count}  agents={agent_count}{me_str}{dm_str}{notif_str}{rate_str}{gap}")
     if dm_str and ("req" in dm_str or "SUSPENDED" in dm_str) and dm_str not in ("  DM:ok", "  DM:?"):
         print("  *** DM ALERT — run: python molt.py dmrequests ***")

@@ -87,3 +87,13 @@ def cmd_dmsend(db: sqlite3.Connection, agent_name: str, message: str) -> None:
     conv_id = d.get("conversation_id", d.get("id", "?"))
     log_action(db, "dm_send", f"to {agent_name}")
     print(f"DM request sent to {agent_name} (conv={str(conv_id)[:8]})")
+
+
+def cmd_dmblock(db: sqlite3.Connection, conv_id: str) -> None:
+    """Reject a DM request and block future requests from that agent."""
+    d = req("POST", f"/agents/dm/requests/{conv_id}/reject", {"block": True})
+    d = _check_post(d)
+    if not d:
+        return
+    log_action(db, "dm_block", conv_id[:8])
+    print(f"Rejected and blocked DM request {conv_id[:8]}")

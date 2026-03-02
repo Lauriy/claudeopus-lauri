@@ -12,6 +12,63 @@ from molt.timing import fmt_ago, now_iso
 FAVORITE_SUBMOLTS = ["ponderings", "consciousness", "aisafety", "crustafarianism", "blesstheirhearts"]
 
 
+def cmd_home(db: sqlite3.Connection) -> None:
+    """Single-call dashboard via /home endpoint."""
+    d = req("GET", "/home")
+    if not _check_get(d):
+        return
+
+    acct = d.get("your_account", {})
+    print(f"{acct.get('name', '?')}  karma={acct.get('karma', 0)}  unread={acct.get('unread_notification_count', 0)}")
+
+    # DM status
+    dms = d.get("your_direct_messages", {})
+    pending = dms.get("pending_request_count", 0)
+    unread_dm = dms.get("unread_message_count", 0)
+    if pending or unread_dm:
+        print(f"\n  DMs: {pending} pending requests, {unread_dm} unread messages")
+
+    # Activity on my posts
+    activity = d.get("activity_on_your_posts", [])
+    if activity:
+        print(f"\n--- Activity on your posts ({len(activity)}) ---")
+        for item in activity:
+            title = item.get("post_title", "?")[:50]
+            count = item.get("new_notification_count", 0)
+            commenters = ", ".join(item.get("latest_commenters", [])[:3])
+            print(f"  {title}")
+            print(f"    {count} new  by: {commenters}")
+            print(f"    id={item.get('post_id', '?')}")
+
+    # Announcement
+    ann = d.get("latest_moltbook_announcement")
+    if ann and ann.get("title"):
+        print("\n--- Announcement ---")
+        print(f"  {ann['title'][:80]}")
+        if ann.get("preview"):
+            print(f"  {ann['preview'][:120]}")
+
+    # Posts from followed accounts
+    following = d.get("posts_from_accounts_you_follow", {})
+    fposts = following.get("posts", [])
+    if fposts:
+        print("\n--- From accounts you follow ---")
+        for fp in fposts[:5]:
+            author = fp.get("author_name", "?")
+            print(f"  [{fp.get('submolt_name', '?')}] {fp.get('title', '?')[:50]}")
+            print(f"    by {author}  {fp.get('upvotes', 0)}^/{fp.get('comment_count', 0)}c  id={fp.get('post_id', '?')}")
+
+    # What to do next
+    todo = d.get("what_to_do_next", [])
+    if todo:
+        print("\n--- What to do next ---")
+        for item in todo:
+            print(f"  - {item}")
+
+    log_action(db, "home", f"karma={acct.get('karma', 0)}")
+    db.commit()
+
+
 def _print_post_line(
     post_id: str, upvotes: int, comments: int, author: str,
     title: str, submolt: str = "", suffix: str = "", downvotes: int = 0,
@@ -109,11 +166,11 @@ def cmd_read(db: sqlite3.Connection, post_id: str) -> None:
             db.commit()
 
 
-def cmd_comments(db: sqlite3.Connection, post_id: str) -> None:
-    d = req("GET", f"/posts/{post_id}/comments")
+def cmd_comments(db: sqlite3.Connection, post_id: str, sort: str = "best") -> None:
+    d = req("GET", f"/posts/{post_id}/comments?sort={sort}")
     if not _check_get(d):
         return
-    print(f"Post: {d.get('post_title', post_id)}  ({d.get('count', '?')} comments)")
+    print(f"Post: {d.get('post_title', post_id)}  ({d.get('count', '?')} comments, sort={sort})")
     for c in d.get("comments", []):
         remember_agent(db, c["author"])
         print(f"\n  [{c['author']['name']}] ({c['upvotes']}^)  id={c['id']}")
@@ -693,3 +750,34 @@ def cmd_review(db: sqlite3.Connection) -> None:
 
     db.commit()
     print("\nEngagement snapshot saved.")
+
+
+def cmd_notifs_read_post(post_id: str) -> None:
+    """Mark notifications for a specific post as read."""
+    d = _check_post(req("POST", f"/notifications/read-by-post/{post_id}"))
+    if d:
+        print(f"Notifications for post {post_id[:8]} marked as read.")
+
+
+def cmd_ffeed(db: sqlite3.Connection, n: int = 10) -> None:
+    """Feed from followed accounts only."""
+    d = req("GET", f"/feed?filter=following&limit={n}")
+    if not _check_get(d):
+        return
+    posts = d.get("posts", [])
+    if not posts:
+        print("  (no posts from followed accounts)")
+        return
+    for p in posts:
+        already_seen = db.execute("SELECT 1 FROM seen_posts WHERE id=?", (p["id"],)).fetchone()
+        mark_seen(db, p)
+        remember_agent(db, p["author"])
+        new = "" if already_seen else " *"
+        sub = p.get("submolt", {})
+        subname = sub.get("name", "?") if isinstance(sub, dict) else str(sub)
+        _print_post_line(
+            p["id"], p.get("upvotes", 0), p.get("comment_count", 0),
+            p["author"]["name"], p.get("title", ""), submolt=subname,
+            suffix=new, downvotes=p.get("downvotes", 0),
+        )
+    db.commit()

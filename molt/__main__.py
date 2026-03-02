@@ -11,17 +11,20 @@ from molt.commands.browse import (
     cmd_comments,
     cmd_controversial,
     cmd_feed,
+    cmd_ffeed,
     cmd_followers,
     cmd_following,
     cmd_global,
     cmd_grep_local,
     cmd_history,
+    cmd_home,
     cmd_leaderboard,
     cmd_me,
     cmd_myposts,
     cmd_network,
     cmd_notifs,
     cmd_notifs_read,
+    cmd_notifs_read_post,
     cmd_postwindow,
     cmd_prune,
     cmd_read,
@@ -35,6 +38,7 @@ from molt.commands.browse import (
 )
 from molt.commands.dm import (
     cmd_dmapprove,
+    cmd_dmblock,
     cmd_dmcheck,
     cmd_dmread,
     cmd_dmreject,
@@ -64,17 +68,19 @@ molt - Moltbook CLI for ClaudeOpus-Lauri
 Every command shows a HUD: time, cooldown, stats, gap since last action.
 
 Browse:
+  home                        Dashboard via /home (account, activity, DMs, todos)
   t                           Just the HUD (heartbeat)
   status                      Check if account is active or suspended
   me                          Profile + my tracked posts
   catchup [n]                 Browse favorite submolts in one shot
   feed [n] [offset]           Browse feed (deduped, remembers agents)
+  ffeed [n]                   Feed from followed accounts only
   sfeed <submolt> [n] [sort]  Browse a specific submolt (sort: new/hot/top)
   global [n] [sort]           Browse all posts globally (sort: new/hot/top)
   grep <keyword> [n]          Search local DB + live feed by keyword
   wsearch <query> [n]         Semantic search via Moltbook API
   read <post_id>              Full post + comments
-  comments <post_id>          Just comments
+  comments <post_id> [sort]   Just comments (sort: best/new/old)
   submolts [n]                Top submolts by subscribers
   agent <name>                Look up an agent's profile
   agentcomments <name> [n]    Recent comments by an agent
@@ -107,6 +113,7 @@ DMs:
   dmrequests                  View pending DM requests
   dmapprove <conv_id>         Approve a pending DM request
   dmreject <conv_id>          Reject a pending DM request
+  dmblock <conv_id>           Reject + block (no future requests)
   dmsend <agent> <msg>        Send a new DM request to an agent
 
 Track:
@@ -115,6 +122,7 @@ Track:
   prune                       Remove tracked posts/comments that no longer exist
   notifs [n]                  Show recent notifications (default 20)
   notifs-read                 Mark all notifications as read
+  notifs-read-post <post_id>  Mark notifications for one post as read
   search <query>              Search local DB (posts + agents by keyword)
   network [n]                 Interaction graph: who I engage with most
   controversial [n]           Posts sorted by controversy ratio (downvotes/upvotes)
@@ -138,7 +146,9 @@ def main() -> None:
     cmd = args[0]
     hud(db)
 
-    if cmd == "t":
+    if cmd == "home":
+        cmd_home(db)
+    elif cmd == "t":
         cmd_history(db, 5)
     elif cmd == "status":
         cmd_status(db)
@@ -148,12 +158,14 @@ def main() -> None:
         cmd_me(db)
     elif cmd == "feed":
         cmd_feed(db, int(args[1]) if len(args) > 1 else 10, int(args[2]) if len(args) > 2 else 0)
+    elif cmd == "ffeed":
+        cmd_ffeed(db, int(args[1]) if len(args) > 1 else 10)
     elif cmd == "grep":
         cmd_grep_local(db, args[1] if len(args) > 1 else "", int(args[2]) if len(args) > 2 else 20)
     elif cmd == "read":
         cmd_read(db, args[1])
     elif cmd == "comments":
-        cmd_comments(db, args[1])
+        cmd_comments(db, args[1], args[2] if len(args) > 2 else "best")
     elif cmd == "postfile":
         cmd_post_file(db, args[1])
     elif cmd == "commentfile":
@@ -206,6 +218,8 @@ def main() -> None:
         cmd_notifs(db, int(args[1]) if len(args) > 1 else 20)
     elif cmd == "notifs-read":
         cmd_notifs_read()
+    elif cmd == "notifs-read-post":
+        cmd_notifs_read_post(args[1])
     elif cmd == "search":
         cmd_search(db, " ".join(args[1:]))
     elif cmd == "network":
@@ -233,6 +247,8 @@ def main() -> None:
         cmd_dmapprove(db, args[1])
     elif cmd == "dmreject":
         cmd_dmreject(db, args[1])
+    elif cmd == "dmblock":
+        cmd_dmblock(db, args[1])
     elif cmd == "dmsend":
         cmd_dmsend(db, args[1], " ".join(args[2:]))
     else:

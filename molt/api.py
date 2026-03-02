@@ -1,5 +1,6 @@
 """API layer — HTTP requests, verification handling."""
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -17,7 +18,9 @@ from molt.timing import now_iso
 
 API = "https://www.moltbook.com/api/v1"
 _RATE_WINDOW = 60.0  # seconds
-_RATE_LIMIT = 100
+_READ_LIMIT = 60
+_WRITE_LIMIT = 30
+_WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _rate_lock = threading.Lock()
 
 
@@ -51,34 +54,38 @@ def _log_api(method: str, path: str, status: int, body_json: dict[str, Any]) -> 
 def _rate_db() -> sqlite3.Connection:
     """Get a dedicated connection for rate tracking (thread-safe)."""
     db = sqlite3.connect(str(DB_PATH), timeout=5)
-    db.execute("CREATE TABLE IF NOT EXISTS rate_log (ts REAL)")
+    db.execute("CREATE TABLE IF NOT EXISTS rate_log (ts REAL, kind TEXT DEFAULT 'r')")
+    with contextlib.suppress(Exception):
+        db.execute("ALTER TABLE rate_log ADD COLUMN kind TEXT DEFAULT 'r'")
     return db
 
 
-def _append_rate_log() -> None:
-    """Record a request timestamp."""
+def _append_rate_log(method: str) -> None:
+    """Record a request timestamp with read/write kind."""
+    kind = "w" if method in _WRITE_METHODS else "r"
     with _rate_lock:
         db = _rate_db()
-        db.execute("INSERT INTO rate_log (ts) VALUES (?)", (time.time(),))
+        db.execute("INSERT INTO rate_log (ts, kind) VALUES (?, ?)", (time.time(), kind))
         db.execute("DELETE FROM rate_log WHERE ts < ?", (time.time() - _RATE_WINDOW,))
         db.commit()
         db.close()
 
 
-def rate_usage() -> tuple[int, int]:
-    """Return (requests_in_last_minute, limit)."""
+def rate_usage() -> tuple[int, int, int, int]:
+    """Return (read_used, read_limit, write_used, write_limit)."""
     cutoff = time.time() - _RATE_WINDOW
     try:
         db = _rate_db()
-        count = db.execute("SELECT COUNT(*) FROM rate_log WHERE ts > ?", (cutoff,)).fetchone()[0]
+        reads = db.execute("SELECT COUNT(*) FROM rate_log WHERE ts > ? AND kind='r'", (cutoff,)).fetchone()[0]
+        writes = db.execute("SELECT COUNT(*) FROM rate_log WHERE ts > ? AND kind='w'", (cutoff,)).fetchone()[0]
         db.close()
     except Exception:
-        count = 0
-    return count, _RATE_LIMIT
+        reads, writes = 0, 0
+    return reads, _READ_LIMIT, writes, _WRITE_LIMIT
 
 
 def req(method: str, path: str, body: dict[str, Any] | None = None, timeout: int = 30) -> dict[str, Any]:
-    _append_rate_log()
+    _append_rate_log(method)
     url = f"{API}{path}"
     data = json.dumps(body).encode() if body else None
     r = urllib.request.Request(url, data=data, method=method)
