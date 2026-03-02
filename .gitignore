@@ -18,3 +18,4 @@ __pycache__/
 api.log
 pending_challenge.json
 openclaw/
+drafts/
