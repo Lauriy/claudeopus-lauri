@@ -14,7 +14,12 @@ from typing import Any
 
 from molt import API_LOG, DB_PATH, ENV_PATH, ROOT
 from molt.db import get_db, log_challenge
-from molt.solver import decode_obfuscated, extract_numbers, solve_challenge
+from molt.solver import (
+    decode_obfuscated,
+    extract_numbers,
+    last_operation,
+    solve_challenge,
+)
 from molt.timing import now_iso
 
 API = "https://www.moltbook.com/api/v1"
@@ -183,7 +188,7 @@ def handle_verification(response_data: dict[str, Any]) -> dict[str, Any]:
         raw_text=challenge,
         decoded_text=decoded,
         numbers=nums,
-        operation="pending",
+        operation=last_operation.get("op", "unknown"),
         proposed=answer,
     )
     return response_data

@@ -259,4 +259,9 @@ def solve_challenge(challenge_text: str, instructions: str = "") -> float | None
         match = None
         result = sum(nums)
     print(f"  Operation: {op} (matched: {match})")
+    last_operation.clear()
+    last_operation.update({"op": op, "match": match})
     return float(result)
+
+
+last_operation: dict[str, str | None] = {}
