@@ -458,3 +458,14 @@ class TestSolveChallenge:
         )
         # Should detect 'total' for addition, NOT 'sum' from 'swimsum'
         assert result == pytest.approx(27.0)
+
+    def test_add_28_4_strikes_total_force(self) -> None:
+        """Session 17: server rejected 32.00 for '28+4 total force'. Solver says 32. Open question."""
+        raw = r"A] LoB bSsTtErS^ ClAwWw FoRrCeE IsS/ tWeNtY eIgHhT] NeWwToNs- AnNd~ iTt StRrIkEsS\ FoUuR, WhAaT]s ThE/ ToTaLl- FoRrCeE?"
+        decoded = decode_obfuscated(raw)
+        nums = extract_numbers(decoded)
+        assert nums == [28, 4]
+        result = solve_challenge(raw)
+        # Solver says 32.0 (addition via 'total'). Server rejected this.
+        # Keeping test at 32.0 to document solver behavior; server expected answer unknown.
+        assert result == pytest.approx(32.0)
