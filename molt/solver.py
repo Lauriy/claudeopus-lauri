@@ -95,8 +95,13 @@ def _join_split_tokens(tokens: list[str]) -> list[str]:
             result.append(tokens[i] + tokens[i + 1] + tokens[i + 2])
             i += 3
         elif i + 1 < len(tokens) and _fuzzy_num(tokens[i] + tokens[i + 1]) is not None:
-            result.append(tokens[i] + tokens[i + 1])
-            i += 2
+            # Don't steal a token that starts an exact 2-way join with the next token
+            if i + 2 < len(tokens) and (tokens[i + 1] + tokens[i + 2]) in WORD_TO_NUM:
+                result.append(tokens[i])
+                i += 1
+            else:
+                result.append(tokens[i] + tokens[i + 1])
+                i += 2
         else:
             result.append(tokens[i])
             i += 1
@@ -115,9 +120,14 @@ _NOISE_FOLLOWERS = frozenset({
 _NOISE_PREDECESSORS = frozenset({"these", "those", "both"})
 
 
-def extract_numbers(text: str) -> list[int | float]:
+def extract_numbers(text: str, *, verbose: bool = False) -> list[int | float]:
     """Extract number groups from decoded text, handling 'no' corrections and noise words."""
-    tokens = _join_split_tokens(text.lower().split())
+    raw_tokens = text.lower().split()
+    tokens = _join_split_tokens(raw_tokens)
+    if verbose and tokens != raw_tokens:
+        joined = [t for t in tokens if t not in raw_tokens]
+        if joined:
+            print(f"  Joined tokens: {joined}")
     # Build list of (number, gap_before, trailing) to detect corrections and noise
     # trailing = first non-number tokens after this group
     groups: list[tuple[int | float, list[str], list[str]]] = []
@@ -186,10 +196,10 @@ def solve_challenge(challenge_text: str, instructions: str = "") -> float | None
     """Decode obfuscated text, extract numbers, compute answer."""
     decoded = decode_obfuscated(challenge_text)
     print(f"  Challenge decoded: {decoded}")
-    nums = extract_numbers(decoded)
+    nums = extract_numbers(decoded, verbose=True)
     print(f"  Numbers found: {nums}")
     if not nums:
-        nums = extract_numbers(challenge_text.lower())
+        nums = extract_numbers(challenge_text.lower(), verbose=True)
         print(f"  Fallback numbers from raw: {nums}")
     if not nums:
         return None
@@ -203,7 +213,8 @@ def solve_challenge(challenge_text: str, instructions: str = "") -> float | None
 
     def _has(stems: tuple[str, ...]) -> bool:
         return any(
-            s in combined or s in combined_nospace
+            s in combined
+            or (len(s) >= 4 and s in combined_nospace)
             or (len(_collapse_doubles(s)) >= 4 and _collapse_doubles(s) in combined_dedup)
             for s in stems
         )
@@ -211,7 +222,9 @@ def solve_challenge(challenge_text: str, instructions: str = "") -> float | None
     def _which(stems: tuple[str, ...]) -> str | None:
         """Return which stem matched, for debugging."""
         for s in stems:
-            if s in combined or s in combined_nospace:
+            if s in combined:
+                return s
+            if len(s) >= 4 and s in combined_nospace:
                 return s
             cs = _collapse_doubles(s)
             if len(cs) >= 4 and cs in combined_dedup:

@@ -60,6 +60,18 @@ def get_db() -> sqlite3.Connection:
             detail TEXT
         );
         CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE IF NOT EXISTS challenges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            at TEXT,
+            code TEXT,
+            raw_text TEXT,
+            decoded_text TEXT,
+            numbers TEXT,
+            operation TEXT,
+            proposed REAL,
+            submitted REAL,
+            result TEXT
+        );
         CREATE INDEX IF NOT EXISTS idx_seen_author ON seen_posts(author);
         CREATE INDEX IF NOT EXISTS idx_seen_submolt ON seen_posts(submolt);
         CREATE INDEX IF NOT EXISTS idx_actions_at ON actions(at DESC);
@@ -103,6 +115,37 @@ def log_action(db: sqlite3.Connection, action: str, detail: str = "") -> None:
         (now_iso(), action, detail),
     )
     db.commit()
+
+
+def log_challenge(
+    db: sqlite3.Connection,
+    *,
+    code: str,
+    raw_text: str,
+    decoded_text: str,
+    numbers: list[int | float],
+    operation: str,
+    proposed: float | None,
+) -> None:
+    db.execute(
+        "INSERT INTO challenges (at, code, raw_text, decoded_text, numbers, operation, proposed) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (now_iso(), code, raw_text, decoded_text, json.dumps(numbers), operation, proposed),
+    )
+    db.commit()
+
+
+def update_challenge_result(db: sqlite3.Connection, code: str, submitted: float, result: str) -> None:
+    db.execute(
+        "UPDATE challenges SET submitted=?, result=? WHERE code=?",
+        (submitted, result, code),
+    )
+    db.commit()
+
+
+def get_challenges(db: sqlite3.Connection, n: int = 20) -> list[sqlite3.Row]:
+    return db.execute(
+        "SELECT * FROM challenges ORDER BY id DESC LIMIT ?", (n,)
+    ).fetchall()
 
 
 def _extract_submolt(post: dict[str, Any]) -> str:

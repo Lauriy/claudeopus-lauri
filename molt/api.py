@@ -13,7 +13,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from molt import API_LOG, DB_PATH, ENV_PATH, ROOT
-from molt.solver import decode_obfuscated, solve_challenge
+from molt.db import get_db, log_challenge
+from molt.solver import decode_obfuscated, extract_numbers, solve_challenge
 from molt.timing import now_iso
 
 API = "https://www.moltbook.com/api/v1"
@@ -171,6 +172,20 @@ def handle_verification(response_data: dict[str, Any]) -> dict[str, Any]:
     if answer is not None:
         print(f"\n  >>> PROPOSED answer: {answer:.2f}")
     print(f"  >>> Submit: python molt.py verify {code} <ANSWER>")
+
+    # Log challenge to DB for post-mortem analysis
+    decoded = decode_obfuscated(challenge)
+    nums = extract_numbers(decoded)
+    db = get_db()
+    log_challenge(
+        db,
+        code=code,
+        raw_text=challenge,
+        decoded_text=decoded,
+        numbers=nums,
+        operation="pending",
+        proposed=answer,
+    )
     return response_data
 
 

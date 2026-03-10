@@ -435,3 +435,26 @@ class TestSolveChallenge:
             "Solve the math problem and respond with ONLY the number (with 2 decimal places, e.g., '525.00'). Send your answer to POST /api/v1/verify with the verification_code.",
         )
         assert result == pytest.approx(28.0)
+
+    def test_add_32_12_split_t_wo(self) -> None:
+        """Session 17: 'ThIrTy T wWo' splits 'two' as 't wo'. Joiner must not greedily consume 't' into 'thirtyt'."""
+        result = solve_challenge(
+            "A] LoBbSsTtEeR] wItH/ ClLaW^- FoRcE] oF- ThIrTy T wWo] NeEwWtToOnSs + TwElVvEe] NeEwWtToOnSs, WhAt/ Is] ThE- ToTaL^ FoRcE?",
+            "Solve the math problem and respond with ONLY the number (with 2 decimal places, e.g., '525.00'). Send your answer to POST /api/v1/verify with the verification_code.",
+        )
+        assert result == pytest.approx(44.0)
+
+    def test_join_no_steal_from_next_exact(self) -> None:
+        """Joiner must not steal 't' from 't'+'wo'='two' into 'thirty'+'t'='thirtyt'."""
+        result = _join_split_tokens(["thirty", "t", "wo", "newtons"])
+        assert "thirty" in result
+        assert "two" in result
+
+    def test_add_not_sum_false_positive(self) -> None:
+        """'swims um' must not false-match 'sum' stem in space-stripped text."""
+        result = solve_challenge(
+            "A] lOoB-StEr S^wImS Um LiKe A] cLaW HaS tW/eNtY ThReE NooTohNs ~ aNd- WiNs \\\\ fOuR DoMiNaN-ce FiGhTs, WhAt] Is ToTaL FoR-cE <oH>?",
+            "Solve the math problem",
+        )
+        # Should detect 'total' for addition, NOT 'sum' from 'swimsum'
+        assert result == pytest.approx(27.0)

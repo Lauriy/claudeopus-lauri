@@ -60,7 +60,7 @@ from molt.commands.write import (
     cmd_unsubscribe,
     cmd_upvote,
 )
-from molt.db import get_db, migrate_from_json
+from molt.db import get_challenges, get_db, migrate_from_json, update_challenge_result
 from molt.hud import hud
 
 USAGE = """\
@@ -104,6 +104,7 @@ Write:
 
 Verification (challenges appear in POST responses!):
   verify <code> <answer>      Submit a verification challenge answer manually
+  challenges [n]              View challenge history (proposed vs actual, success/fail)
 
 DMs:
   dmcheck                     Check for pending requests + unread messages
@@ -231,8 +232,32 @@ def main() -> None:
     elif cmd == "history":
         cmd_history(db, int(args[1]) if len(args) > 1 else 20)
     elif cmd == "verify":
-        d = req("POST", "/verify", {"verification_code": args[1], "answer": " ".join(args[2:])})
+        code = args[1]
+        answer_str = " ".join(args[2:])
+        d = req("POST", "/verify", {"verification_code": code, "answer": answer_str})
         print(json.dumps(d, indent=2))
+        result = "success" if d.get("success") else "fail"
+        update_challenge_result(db, code, float(answer_str), result)
+    elif cmd == "challenges":
+        rows = get_challenges(db, int(args[1]) if len(args) > 1 else 20)
+        if not rows:
+            print("No challenges logged yet.")
+        else:
+            ok = sum(1 for r in rows if r["result"] == "success")
+            fail = sum(1 for r in rows if r["result"] == "fail")
+            pending = sum(1 for r in rows if r["result"] is None)
+            print(f"Recent challenges: {ok} ok, {fail} fail, {pending} pending\n")
+            for r in rows:
+                status = r["result"] or "pending"
+                proposed = f'{r["proposed"]:.2f}' if r["proposed"] is not None else "?"
+                submitted = f'{r["submitted"]:.2f}' if r["submitted"] is not None else "-"
+                print(f"  [{status:7}] {r['at'][:16]}  nums={r['numbers']}  op={r['operation']}")
+                print(f"           proposed={proposed}  submitted={submitted}")
+                decoded = r["decoded_text"]
+                if len(decoded) > 80:
+                    decoded = decoded[:77] + "..."
+                print(f"           {decoded}")
+                print()
     elif cmd == "dmcheck":
         cmd_dmcheck(db)
     elif cmd == "dms":
