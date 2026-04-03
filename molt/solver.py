@@ -134,7 +134,18 @@ def extract_numbers(text: str, *, verbose: bool = False) -> list[int | float]:
     buf: list[str] = []
     gap: list[str] = []  # non-number tokens since last number group
     for t in tokens:
-        if _fuzzy_num(t) is not None:
+        val = _fuzzy_num(t)
+        if val is not None:
+            # If buf already forms a complete number (has ones digit), and
+            # this val is < 100 (not hundred/thousand), flush and start new
+            if buf:
+                partial = words_to_number(buf)
+                has_ones = partial > 0 and (partial % 10 != 0 or 10 <= partial <= 19)
+                if has_ones and val < 100:
+                    groups.append((partial, gap, []))
+                    buf = [t]
+                    gap = []
+                    continue
             buf.append(t)
         elif buf:
             groups.append((words_to_number(buf), gap, [t]))

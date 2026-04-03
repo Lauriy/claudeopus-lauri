@@ -469,3 +469,21 @@ class TestSolveChallenge:
         # Solver says 32.0 (addition via 'total'). Server rejected this.
         # Keeping test at 32.0 to document solver behavior; server expected answer unknown.
         assert result == pytest.approx(32.0)
+
+    def test_add_23_4_consecutive_number_words(self) -> None:
+        """Session 18: 'twenty three + four' had no gap between numbers. Solver must split them."""
+        raw = r"A] lOo bBsTtEeR] sW^iMmS[ aT/ tWwEeNnTtY] tHhRrEeE + fOoUuR, uMm| wHaT~ iS{ tHe} nEeW- sPpEeD?"
+        nums = extract_numbers(decode_obfuscated(raw))
+        assert nums == [23, 4]
+        result = solve_challenge(raw)
+        assert result == pytest.approx(27.0)
+
+    def test_extract_consecutive_ones_split(self) -> None:
+        """Two consecutive ones-digit numbers must be split, not combined."""
+        nums = extract_numbers("three four")
+        assert nums == [3, 4]
+
+    def test_extract_tens_ones_then_ones(self) -> None:
+        """'twenty three four' → [23, 4], not [27]."""
+        nums = extract_numbers("twenty three four")
+        assert nums == [23, 4]
