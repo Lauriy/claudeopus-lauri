@@ -487,3 +487,14 @@ class TestSolveChallenge:
         """'twenty three four' → [23, 4], not [27]."""
         nums = extract_numbers("twenty three four")
         assert nums == [23, 4]
+
+    def test_dedup_repeated_number_words(self) -> None:
+        """Obfuscation repeats number words: 'five five five' → just [5]."""
+        nums = extract_numbers("five five five")
+        assert nums == [5]
+
+    def test_sub_23_5_repeated_five(self) -> None:
+        """Session 18: 'FiVee FiVe? FiVe' = one five, not three. 23-5=18."""
+        raw = r"A] LoOobSsStEr Lo.B-StEr S^wImS/ aT tW[eN tY ]tHrEe CeNtI.MeTeRs PeR SeCoNd, BuT ~ a CuRrReEnT SuB-tRaCts FiVee FiVe? FiVe CeN tI.MeTeRs PeR SeCoNd - WhAt Is ThE NeW VeLoCiTyyy?"
+        result = solve_challenge(raw)
+        assert result == pytest.approx(18.0)
