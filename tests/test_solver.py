@@ -493,6 +493,11 @@ class TestSolveChallenge:
         nums = extract_numbers("five five five")
         assert nums == [5]
 
+    def test_extract_tens_after_tens_split(self) -> None:
+        """'thirty twenty' → [30, 20], not [50]. Two tens = two numbers."""
+        nums = extract_numbers("thirty twenty notons total force")
+        assert nums == [30, 20]
+
     def test_sub_23_5_repeated_five(self) -> None:
         """Session 18: 'FiVee FiVe? FiVe' = one five, not three. 23-5=18."""
         raw = r"A] LoOobSsStEr Lo.B-StEr S^wImS/ aT tW[eN tY ]tHrEe CeNtI.MeTeRs PeR SeCoNd, BuT ~ a CuRrReEnT SuB-tRaCts FiVee FiVe? FiVe CeN tI.MeTeRs PeR SeCoNd - WhAt Is ThE NeW VeLoCiTyyy?"

@@ -141,7 +141,9 @@ def extract_numbers(text: str, *, verbose: bool = False) -> list[int | float]:
             if buf:
                 partial = words_to_number(buf)
                 has_ones = partial > 0 and (partial % 10 != 0 or 10 <= partial <= 19)
-                if has_ones and val < 100:
+                # Also split when both are tens: "thirty twenty" → [30, 20]
+                both_tens = partial >= 20 and partial % 10 == 0 and val >= 20 and val % 10 == 0
+                if (has_ones or both_tens) and val < 100:
                     # Obfuscation repeats number words: "five five five" = just 5.
                     # If new val equals the partial, skip it (dedup).
                     if val == partial:
